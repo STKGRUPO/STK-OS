@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling==1.28.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stk-os-api"
+version = "0.1.0"
+description = "Backend transacional do STK OS"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn[standard]==0.52.4",
+  "sqlalchemy==2.0.52",
+  "psycopg[binary]==3.3.4",
+  "pydantic-settings==2.15.0",
+  "PyJWT==2.13.0",
+  "pwdlib[argon2]==0.3.1",
+  "python-dotenv==1.2.1"
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx2==2.12.0",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "ruff==0.16.3"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stk_os"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --cov=stk_os --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]
+markers = [
+  "postgres: requires STK_TEST_DATABASE_URL pointing to a disposable PostgreSQL database"
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S105", "S106"]
+"scripts/**/*.py" = ["S603"]
+"src/stk_os/schemas.py" = ["S105"]

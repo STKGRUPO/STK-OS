@@ -1,0 +1,203 @@
+:root {
+  --ink: #12211d;
+  --muted: #53645e;
+  --paper: #f4f1e8;
+  --surface: rgba(255, 255, 255, 0.62);
+  --line: rgba(18, 33, 29, 0.15);
+  --green: #0a7658;
+  --amber: #a56018;
+  --red: #a64232;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 14% 8%, rgba(10, 118, 88, 0.13), transparent 31rem),
+    linear-gradient(135deg, #f7f4ec 0%, #ece8db 100%);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.27;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, black, transparent 72%);
+}
+
+main {
+  position: relative;
+  width: min(1160px, calc(100% - 40px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 88px 0 32px;
+}
+
+.hero {
+  max-width: 850px;
+}
+
+.eyebrow {
+  margin-bottom: 24px;
+  color: var(--green);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+h1 {
+  max-width: 780px;
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(3.2rem, 7vw, 6.7rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.94;
+}
+
+.intro {
+  max-width: 710px;
+  margin: 32px 0;
+  color: var(--muted);
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  line-height: 1.65;
+}
+
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 48px;
+  padding: 8px 9px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  font-size: 0.9rem;
+}
+
+.health-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--amber) 15%, transparent);
+}
+
+.health-online .health-dot {
+  background: var(--green);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--green) 15%, transparent);
+}
+
+.health-offline .health-dot {
+  background: var(--red);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--red) 15%, transparent);
+}
+
+button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: white;
+  background: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+button:hover {
+  background: var(--green);
+}
+
+.foundation {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 80px;
+}
+
+article {
+  min-height: 235px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+}
+
+article > span {
+  color: var(--green);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+h2 {
+  margin: 56px 0 12px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.6rem;
+  font-weight: 500;
+}
+
+article p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 28px;
+  padding: 22px 2px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+  main {
+    width: min(100% - 28px, 1160px);
+    padding-top: 54px;
+  }
+
+  h1 {
+    font-size: clamp(3rem, 15vw, 5rem);
+  }
+
+  .health {
+    align-items: flex-start;
+    border-radius: 18px;
+    flex-wrap: wrap;
+  }
+
+  .health button {
+    width: 100%;
+  }
+
+  .foundation {
+    grid-template-columns: 1fr;
+    margin-top: 54px;
+  }
+
+  article {
+    min-height: auto;
+  }
+
+  h2 {
+    margin-top: 34px;
+  }
+}
+

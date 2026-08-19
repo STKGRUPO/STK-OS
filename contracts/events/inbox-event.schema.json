@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stk-os.local/contracts/events/inbox-event.schema.json",
+  "title": "InboxEventCommand",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "external_event_id", "event_type", "payload"],
+  "properties": {
+    "source": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "external_event_id": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "event_type": { "type": "string", "minLength": 1, "maxLength": 150 },
+    "payload": { "type": "object" }
+  }
+}
+

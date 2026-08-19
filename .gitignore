@@ -1,0 +1,48 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.jks
+*.keystore
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+.npm-cache/
+.pnpm-store/
+*.tsbuildinfo
+
+# Databases and private payloads
+*.dump
+*.sql.gz
+*.sqlite
+*.sqlite3
+payloads/
+private/
+
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Generated local assets at repository root
+/generated-image-*

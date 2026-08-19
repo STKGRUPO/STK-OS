@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stk-os.local/contracts/events/outbox-event.schema.json",
+  "title": "OutboxEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "aggregate_type", "aggregate_id", "event_type", "payload", "correlation_id", "occurred_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "aggregate_type": { "type": "string" },
+    "aggregate_id": { "type": "string", "format": "uuid" },
+    "event_type": { "type": "string" },
+    "payload": { "type": "object" },
+    "correlation_id": { "type": "string", "format": "uuid" },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}
+
