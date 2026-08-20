@@ -38,6 +38,8 @@ pnpm web:dev
 - documentação OpenAPI: `http://127.0.0.1:8000/docs`
 - frontend: `http://127.0.0.1:3000`
 
+Após o login, o frontend oferece filtros por unidade/pipeline, Kanban, cadastros, busca global, visão 360° e importação JSON controlada. A importação local aceita no máximo cem linhas e nunca deve receber base real sem o gate operacional e de privacidade correspondente.
+
 ## Verificação
 
 ```text

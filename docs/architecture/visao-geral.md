@@ -6,6 +6,7 @@ O STK OS V1 começa como monólito modular:
 Next.js → FastAPI → PostgreSQL
               ├── identidade e autorização
               ├── organização
+              ├── CRM
               └── trilha de controle
 ```
 
@@ -22,7 +23,12 @@ Grupo
 
 Uma unidade pertence a um estabelecimento fiscal operacional. Vínculos futuros podem representar outros estabelecimentos emissores sem confundir identidade fiscal com a unidade comercial.
 
+## CRM vertical
+
+Pessoa e Empresa são cadastros canônicos do Grupo. O relacionamento com MR, STK Lab e Stelli é muitos-para-muitos, sem duplicar o cadastro mestre. Oportunidade, pipeline, tarefa e atividade têm unidade explícita.
+
+Status (`open`, `won`, `lost`) não é etapa. Toda mudança de etapa grava histórico append-only na mesma transação. A próxima ação é uma projeção da tarefa aberta mais próxima, não um texto duplicado na oportunidade.
+
 ## Limites desta entrega
 
-Não existem módulos de CRM, contrato, faturamento, NFS-e, Outlook, n8n, IA ou MCP. Diretórios reservados por decisão explícita contêm somente documentação de fronteira.
-
+Não existem módulos de contrato, faturamento, NFS-e, Outlook, n8n, IA ou MCP. A inspeção do sistema Python pertence à Etapa 3 e não foi antecipada.

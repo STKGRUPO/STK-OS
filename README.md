@@ -1,6 +1,6 @@
 # STK OS
 
-Fundação executável do STK OS V1. Este repositório implementa exclusivamente as Etapas 0 e 1 aprovadas no Parecer Técnico do Marco 0: baseline, arquitetura executável, identidade, estrutura organizacional e trilha de controle.
+Implementação executável do STK OS V1 até a Etapa 2 aprovada no Parecer Técnico do Marco 0: fundação, identidade, estrutura organizacional, trilha de controle e CRM vertical mínimo.
 
 ## Escopo atual
 
@@ -10,9 +10,13 @@ Fundação executável do STK OS V1. Este repositório implementa exclusivamente
 - administrador e service accounts com autenticação e autorização por capacidade;
 - correlação, auditoria append-only, idempotência, inbox, outbox e exceções;
 - health checks e logging estruturado com redação de campos sensíveis;
-- frontend mínimo para provar a comunicação com a API.
+- pessoas e empresas canônicas no Grupo, com vínculos multiunidade;
+- métodos de contato, vínculos pessoa–empresa e catálogos comerciais;
+- pipelines, oportunidades, participantes, histórico de etapas, atividades e tarefas;
+- próxima ação derivada da tarefa aberta mais próxima;
+- API, Kanban responsivo, busca, visão 360° e importação pequena/auditável.
 
-CRM, faturamento, NFS-e, Outlook, n8n, IA e MCP não fazem parte desta rodada.
+Contratos, faturamento, NFS-e, Outlook, n8n, IA e MCP não fazem parte desta etapa.
 
 ## Pré-requisitos
 

@@ -11,4 +11,12 @@
 - **Inbox**: registro durável e deduplicado de evento recebido.
 - **Outbox**: evento criado na mesma transação da mudança de negócio, aguardando entrega.
 - **Exceção**: falha ou caso que exige tratamento controlado.
-
+- **Pessoa (`person`)**: cadastro canônico do Grupo; pode se relacionar com várias unidades.
+- **Empresa (`company`)**: cadastro canônico do Grupo; não se confunde com entidade jurídica interna.
+- **Método de contato (`contact_method`)**: e-mail, telefone ou WhatsApp normalizado, ligado a uma pessoa ou empresa.
+- **Pipeline**: fluxo comercial de uma unidade. Ganho e perda são status da oportunidade, não etapas.
+- **Oportunidade**: negócio pertencente a uma unidade e pipeline, com ao menos pessoa ou empresa participante.
+- **Histórico de etapas**: registro append-only de cada entrada ou movimentação de uma oportunidade.
+- **Atividade**: interação ocorrida e registrada na linha do tempo.
+- **Tarefa**: ação futura com prazo e responsável; a tarefa aberta mais próxima deriva a próxima ação.
+- **Importação CRM**: lote de até cem linhas cuja evidência persiste hash, resultado e referência, sem copiar o payload para a auditoria.

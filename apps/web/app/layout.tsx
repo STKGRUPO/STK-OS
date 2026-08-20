@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "STK OS",
-  description: "Fundação operacional do Grupo STK"
+  title: "CRM | STK OS",
+  description: "CRM operacional do Grupo STK"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
@@ -15,4 +15,3 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     </html>
   );
 }
-

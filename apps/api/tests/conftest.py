@@ -21,9 +21,14 @@ from stk_os.models import (
     Base,
     BusinessUnit,
     FiscalEstablishment,
+    LeadSource,
     LegalEntity,
+    LossReason,
     Organization,
     Permission,
+    Pipeline,
+    PipelineStage,
+    ProductService,
     Role,
     RolePermission,
     ServiceAccount,
@@ -35,8 +40,16 @@ ORGANIZATION_ID = uuid.UUID("10000000-0000-4000-8000-000000000001")
 LEGAL_ENTITY_ID = uuid.UUID("20000000-0000-4000-8000-000000000001")
 ESTABLISHMENT_ID = uuid.UUID("30000000-0000-4000-8000-000000000001")
 UNIT_ID = uuid.UUID("40000000-0000-4000-8000-000000000001")
+LAB_UNIT_ID = uuid.UUID("40000000-0000-4000-8000-000000000002")
+STELLI_UNIT_ID = uuid.UUID("40000000-0000-4000-8000-000000000003")
 ADMIN_ACTOR_ID = uuid.UUID("60000000-0000-4000-8000-000000000001")
 SERVICE_ACTOR_ID = uuid.UUID("60000000-0000-4000-8000-000000000002")
+SOURCE_ID = uuid.UUID("71000000-0000-4000-8000-000000000001")
+MR_PRODUCT_ID = uuid.UUID("72000000-0000-4000-8000-000000000001")
+MR_PIPELINE_ID = uuid.UUID("73000000-0000-4000-8000-000000000001")
+MR_STAGE_LEAD_ID = uuid.UUID("74000000-0000-4000-8000-000000000001")
+MR_STAGE_PROPOSAL_ID = uuid.UUID("74000000-0000-4000-8000-000000000002")
+MR_LOSS_REASON_ID = uuid.UUID("75000000-0000-4000-8000-000000000001")
 
 
 @pytest.fixture(scope="session")
@@ -78,6 +91,20 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
             code="mr",
             name="MR Engenharia e Consultoria",
         )
+        lab_unit = BusinessUnit(
+            id=LAB_UNIT_ID,
+            organization_id=ORGANIZATION_ID,
+            primary_establishment_id=ESTABLISHMENT_ID,
+            code="stk-lab",
+            name="STK Lab",
+        )
+        stelli_unit = BusinessUnit(
+            id=STELLI_UNIT_ID,
+            organization_id=ORGANIZATION_ID,
+            primary_establishment_id=ESTABLISHMENT_ID,
+            code="stelli",
+            name="Stelli",
+        )
         admin_actor = Actor(
             id=ADMIN_ACTOR_ID,
             organization_id=ORGANIZATION_ID,
@@ -104,6 +131,9 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
                 "audit:read",
                 "events:ingest",
                 "exceptions:write",
+                "crm:read",
+                "crm:write",
+                "crm:import",
             )
         }
         session.add_all(
@@ -112,6 +142,8 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
                 entity,
                 establishment,
                 unit,
+                lab_unit,
+                stelli_unit,
                 admin_actor,
                 service_actor,
                 admin_role,
@@ -140,6 +172,61 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
             session.add(RolePermission(role_id=admin_role.id, permission_id=permission.id))
         for code in ("organization:read", "events:ingest", "exceptions:write"):
             session.add(RolePermission(role_id=service_role.id, permission_id=permissions[code].id))
+        for code in ("crm:read", "crm:write"):
+            session.add(RolePermission(role_id=service_role.id, permission_id=permissions[code].id))
+        source = LeadSource(
+            id=SOURCE_ID,
+            organization_id=ORGANIZATION_ID,
+            code="synthetic",
+            name="Origem sintética",
+        )
+        session.add(source)
+        for index, (unit_id, unit_code) in enumerate(
+            ((UNIT_ID, "mr"), (LAB_UNIT_ID, "lab"), (STELLI_UNIT_ID, "stelli")), start=1
+        ):
+            product_id = MR_PRODUCT_ID if unit_id == UNIT_ID else uuid.uuid4()
+            pipeline_id = MR_PIPELINE_ID if unit_id == UNIT_ID else uuid.uuid4()
+            first_stage_id = MR_STAGE_LEAD_ID if unit_id == UNIT_ID else uuid.uuid4()
+            second_stage_id = MR_STAGE_PROPOSAL_ID if unit_id == UNIT_ID else uuid.uuid4()
+            session.add_all(
+                [
+                    ProductService(
+                        id=product_id,
+                        organization_id=ORGANIZATION_ID,
+                        business_unit_id=unit_id,
+                        code=f"service-{unit_code}",
+                        name=f"Serviço {unit_code} sintético",
+                    ),
+                    Pipeline(
+                        id=pipeline_id,
+                        organization_id=ORGANIZATION_ID,
+                        business_unit_id=unit_id,
+                        code="sales",
+                        name=f"Pipeline {unit_code}",
+                    ),
+                    PipelineStage(
+                        id=first_stage_id,
+                        pipeline_id=pipeline_id,
+                        code="lead",
+                        name="Lead",
+                        position=1,
+                    ),
+                    PipelineStage(
+                        id=second_stage_id,
+                        pipeline_id=pipeline_id,
+                        code="proposal",
+                        name="Proposta",
+                        position=2,
+                    ),
+                    LossReason(
+                        id=MR_LOSS_REASON_ID if index == 1 else uuid.uuid4(),
+                        organization_id=ORGANIZATION_ID,
+                        business_unit_id=unit_id,
+                        code="other",
+                        name="Outro",
+                    ),
+                ]
+            )
 
     def override_session() -> Iterator[Session]:
         with session_factory() as session:

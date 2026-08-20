@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "STK OS API",
-    "description": "API fundacional das Etapas 0 e 1. Backend dono das regras e transações.",
+    "description": "API transacional do STK OS até a Etapa 2. Backend dono das regras.",
     "version": "0.1.0"
   },
   "paths": {
@@ -376,10 +376,1431 @@
           }
         }
       }
+    },
+    "/api/v1/crm/reference-data": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Reference Data",
+        "operationId": "reference_data_api_v1_crm_reference_data_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceDataResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/crm/people": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "List People",
+        "operationId": "list_people_api_v1_crm_people_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonSummary"
+                  },
+                  "title": "Response List People Api V1 Crm People Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Create Person",
+        "operationId": "create_person_api_v1_crm_people_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/people/{person_id}": {
+      "patch": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Update Person",
+        "operationId": "update_person_api_v1_crm_people__person_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Person Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/companies": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "List Companies",
+        "operationId": "list_companies_api_v1_crm_companies_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompanySummary"
+                  },
+                  "title": "Response List Companies Api V1 Crm Companies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Create Company",
+        "operationId": "create_company_api_v1_crm_companies_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanyCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanySummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/companies/{company_id}": {
+      "patch": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Update Company",
+        "operationId": "update_company_api_v1_crm_companies__company_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Company Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompanyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanySummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/relationships/person-company": {
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Link Person Company",
+        "operationId": "link_person_company_api_v1_crm_relationships_person_company_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonCompanyLinkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonCompanyLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/opportunities": {
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Create Opportunity",
+        "operationId": "create_opportunity_api_v1_crm_opportunities_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpportunityCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "List Opportunities",
+        "operationId": "list_opportunities_api_v1_crm_opportunities_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "pipeline_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pipeline Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "open",
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OpportunityResponse"
+                  },
+                  "title": "Response List Opportunities Api V1 Crm Opportunities Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/kanban/{pipeline_id}": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Get Kanban",
+        "operationId": "get_kanban_api_v1_crm_kanban__pipeline_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pipeline_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Pipeline Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KanbanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/opportunities/{opportunity_id}/stage": {
+      "patch": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Move Opportunity Stage",
+        "operationId": "move_opportunity_stage_api_v1_crm_opportunities__opportunity_id__stage_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Opportunity Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpportunityStageMove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/opportunities/{opportunity_id}/status": {
+      "patch": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Update Opportunity Status",
+        "operationId": "update_opportunity_status_api_v1_crm_opportunities__opportunity_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "opportunity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Opportunity Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpportunityStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpportunityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/activities": {
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Create Activity",
+        "operationId": "create_activity_api_v1_crm_activities_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/tasks": {
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Create Task",
+        "operationId": "create_task_api_v1_crm_tasks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/tasks/{task_id}/complete": {
+      "patch": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Complete Task",
+        "operationId": "complete_task_api_v1_crm_tasks__task_id__complete_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/search": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Search Crm",
+        "operationId": "search_crm_api_v1_crm_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 100,
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResult"
+                  },
+                  "title": "Response Search Crm Api V1 Crm Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/people/{person_id}/360": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Person 360",
+        "operationId": "person_360_api_v1_crm_people__person_id__360_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Person360Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/companies/{company_id}/360": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Company 360",
+        "operationId": "company_360_api_v1_crm_companies__company_id__360_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Company Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Company360Response"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/crm/imports": {
+      "post": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "Import Crm",
+        "operationId": "import_crm_api_v1_crm_imports_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrmImportCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrmImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ActivityCreate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "opportunity_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Id"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "activity_type": {
+            "type": "string",
+            "enum": [
+              "whatsapp",
+              "email",
+              "call",
+              "meeting",
+              "proposal",
+              "follow_up",
+              "service",
+              "note",
+              "automatic_interaction",
+              "ai_action"
+            ],
+            "title": "Activity Type"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 2,
+            "title": "Summary"
+          },
+          "origin": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Origin"
+          },
+          "next_step": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step"
+          },
+          "performed_by": {
+            "type": "string",
+            "enum": [
+              "human",
+              "agent",
+              "system"
+            ],
+            "title": "Performed By",
+            "default": "human"
+          },
+          "workflow_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Reference"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "activity_type",
+          "occurred_at",
+          "summary",
+          "origin"
+        ],
+        "title": "ActivityCreate"
+      },
+      "ActivityResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "opportunity_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Id"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "activity_type": {
+            "type": "string",
+            "title": "Activity Type"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin"
+          },
+          "performed_by": {
+            "type": "string",
+            "title": "Performed By"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_unit_id",
+          "opportunity_id",
+          "person_id",
+          "company_id",
+          "activity_type",
+          "occurred_at",
+          "summary",
+          "origin",
+          "performed_by",
+          "status"
+        ],
+        "title": "ActivityResponse"
+      },
       "AuditEventResponse": {
         "properties": {
           "id": {
@@ -517,6 +1938,626 @@
           "name"
         ],
         "title": "BusinessUnitUpdate"
+      },
+      "CatalogItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "business_unit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Unit Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "title": "CatalogItem"
+      },
+      "Company360Response": {
+        "properties": {
+          "company": {
+            "$ref": "#/components/schemas/CompanySummary"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/PersonCompanyLinkResponse"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityResponse"
+            },
+            "type": "array",
+            "title": "Opportunities"
+          },
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityResponse"
+            },
+            "type": "array",
+            "title": "Activities"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company",
+          "people",
+          "opportunities",
+          "activities",
+          "tasks"
+        ],
+        "title": "Company360Response"
+      },
+      "CompanyCreate": {
+        "properties": {
+          "legal_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Legal Name"
+          },
+          "trade_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 18,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "address_line": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Business Unit Ids"
+          },
+          "lead_source_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Source Id"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactMethodInput"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Contacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "legal_name",
+          "business_unit_ids"
+        ],
+        "title": "CompanyCreate"
+      },
+      "CompanySummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "legal_name": {
+            "type": "string",
+            "title": "Legal Name"
+          },
+          "trade_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactMethodResponse"
+            },
+            "type": "array",
+            "title": "Contacts"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "legal_name",
+          "trade_name",
+          "tax_id",
+          "city",
+          "state_code",
+          "site",
+          "status",
+          "business_unit_ids",
+          "contacts",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CompanySummary"
+      },
+      "CompanyUpdate": {
+        "properties": {
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "trade_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Name"
+          },
+          "address_line": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "site": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "title": "CompanyUpdate"
+      },
+      "ContactMethodInput": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone",
+              "whatsapp"
+            ],
+            "title": "Kind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Value"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value"
+        ],
+        "title": "ContactMethodInput"
+      },
+      "ContactMethodResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone",
+              "whatsapp"
+            ],
+            "title": "Kind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Value"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "normalized_value": {
+            "type": "string",
+            "title": "Normalized Value"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "value",
+          "id",
+          "normalized_value",
+          "status"
+        ],
+        "title": "ContactMethodResponse"
+      },
+      "CrmImportCreate": {
+        "properties": {
+          "source_label": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Source Label"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRow"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_label",
+          "rows"
+        ],
+        "title": "CrmImportCreate"
+      },
+      "CrmImportResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_label": {
+            "type": "string",
+            "title": "Source Label"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "total_rows": {
+            "type": "integer",
+            "title": "Total Rows"
+          },
+          "created_rows": {
+            "type": "integer",
+            "title": "Created Rows"
+          },
+          "matched_rows": {
+            "type": "integer",
+            "title": "Matched Rows"
+          },
+          "failed_rows": {
+            "type": "integer",
+            "title": "Failed Rows"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRowResult"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_label",
+          "status",
+          "total_rows",
+          "created_rows",
+          "matched_rows",
+          "failed_rows",
+          "rows"
+        ],
+        "title": "CrmImportResponse"
       },
       "ExceptionCreate": {
         "properties": {
@@ -669,6 +2710,229 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ImportCompanyRow": {
+        "properties": {
+          "legal_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Legal Name"
+          },
+          "trade_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 18,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Business Unit Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "legal_name",
+          "business_unit_ids"
+        ],
+        "title": "ImportCompanyRow"
+      },
+      "ImportPersonRow": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Full Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14,
+                "minLength": 11
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Business Unit Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name",
+          "business_unit_ids"
+        ],
+        "title": "ImportPersonRow"
+      },
+      "ImportRow": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "person",
+              "company"
+            ],
+            "title": "Entity Type"
+          },
+          "person": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportPersonRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "company": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportCompanyRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_type"
+        ],
+        "title": "ImportRow"
+      },
+      "ImportRowResult": {
+        "properties": {
+          "row_number": {
+            "type": "integer",
+            "title": "Row Number"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "row_number",
+          "entity_type",
+          "result",
+          "resource_id",
+          "error_code"
+        ],
+        "title": "ImportRowResult"
+      },
       "InboxEventCreate": {
         "properties": {
           "source": {
@@ -734,6 +2998,46 @@
         ],
         "title": "InboxEventResponse"
       },
+      "KanbanColumn": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/PipelineStageItem"
+          },
+          "opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityResponse"
+            },
+            "type": "array",
+            "title": "Opportunities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "opportunities"
+        ],
+        "title": "KanbanColumn"
+      },
+      "KanbanResponse": {
+        "properties": {
+          "pipeline": {
+            "$ref": "#/components/schemas/PipelineItem"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/KanbanColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pipeline",
+          "columns"
+        ],
+        "title": "KanbanResponse"
+      },
       "LegalEntityResponse": {
         "properties": {
           "id": {
@@ -783,6 +3087,392 @@
         ],
         "title": "LegalEntityResponse"
       },
+      "OpportunityCreate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "pipeline_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pipeline Id"
+          },
+          "stage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Stage Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "person_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Person Ids"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Title"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Currency",
+            "default": "BRL"
+          },
+          "lead_source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Lead Source Id"
+          },
+          "product_service_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Product Service Ids"
+          },
+          "expected_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Close Date"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "next_action_title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Next Action Title"
+          },
+          "next_action_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Next Action Due At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "pipeline_id",
+          "stage_id",
+          "title",
+          "lead_source_id",
+          "next_action_title",
+          "next_action_due_at"
+        ],
+        "title": "OpportunityCreate"
+      },
+      "OpportunityResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "pipeline_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Pipeline Id"
+          },
+          "stage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Stage Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "lead_source_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Lead Source Id"
+          },
+          "loss_reason_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Reason Id"
+          },
+          "expected_close_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Close Date"
+          },
+          "person_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Person Ids"
+          },
+          "product_service_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Product Service Ids"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "product_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Product Names"
+          },
+          "last_interaction_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Interaction At"
+          },
+          "stage_entered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Stage Entered At"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_unit_id",
+          "pipeline_id",
+          "stage_id",
+          "company_id",
+          "title",
+          "status",
+          "value",
+          "currency",
+          "lead_source_id",
+          "loss_reason_id",
+          "expected_close_date",
+          "person_ids",
+          "product_service_ids",
+          "customer_name",
+          "product_names",
+          "last_interaction_at",
+          "stage_entered_at",
+          "next_action",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OpportunityResponse"
+      },
+      "OpportunityStageMove": {
+        "properties": {
+          "stage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Stage Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "api",
+              "ui",
+              "import",
+              "system"
+            ],
+            "title": "Source",
+            "default": "api"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage_id"
+        ],
+        "title": "OpportunityStageMove"
+      },
+      "OpportunityStatusUpdate": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "won",
+              "lost"
+            ],
+            "title": "Status"
+          },
+          "loss_reason_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Reason Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "OpportunityStatusUpdate"
+      },
       "OrganizationResponse": {
         "properties": {
           "id": {
@@ -820,6 +3510,563 @@
         ],
         "title": "OrganizationResponse"
       },
+      "Person360Response": {
+        "properties": {
+          "person": {
+            "$ref": "#/components/schemas/PersonSummary"
+          },
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/PersonCompanyLinkResponse"
+            },
+            "type": "array",
+            "title": "Companies"
+          },
+          "opportunities": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityResponse"
+            },
+            "type": "array",
+            "title": "Opportunities"
+          },
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityResponse"
+            },
+            "type": "array",
+            "title": "Activities"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "person",
+          "companies",
+          "opportunities",
+          "activities",
+          "tasks"
+        ],
+        "title": "Person360Response"
+      },
+      "PersonCompanyLinkCreate": {
+        "properties": {
+          "person_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Person Id"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Role"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "person_id",
+          "company_id",
+          "role"
+        ],
+        "title": "PersonCompanyLinkCreate"
+      },
+      "PersonCompanyLinkResponse": {
+        "properties": {
+          "person_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Person Id"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Company Id"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Role"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "default": false
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "person_id",
+          "company_id",
+          "role",
+          "id",
+          "status"
+        ],
+        "title": "PersonCompanyLinkResponse"
+      },
+      "PersonCreate": {
+        "properties": {
+          "full_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Full Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14,
+                "minLength": 11
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Business Unit Ids"
+          },
+          "lead_source_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Source Id"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactMethodInput"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Contacts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_name",
+          "business_unit_ids"
+        ],
+        "title": "PersonCreate"
+      },
+      "PersonSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactMethodResponse"
+            },
+            "type": "array",
+            "title": "Contacts"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "full_name",
+          "tax_id",
+          "city",
+          "state_code",
+          "status",
+          "business_unit_ids",
+          "contacts",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PersonSummary"
+      },
+      "PersonUpdate": {
+        "properties": {
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "title": "PersonUpdate"
+      },
+      "PipelineItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineStageItem"
+            },
+            "type": "array",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_unit_id",
+          "code",
+          "name",
+          "kind",
+          "stages"
+        ],
+        "title": "PipelineItem"
+      },
+      "PipelineStageItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          },
+          "sla_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "name",
+          "position",
+          "sla_days"
+        ],
+        "title": "PipelineStageItem"
+      },
+      "ReferenceDataResponse": {
+        "properties": {
+          "business_units": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogItem"
+            },
+            "type": "array",
+            "title": "Business Units"
+          },
+          "lead_sources": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogItem"
+            },
+            "type": "array",
+            "title": "Lead Sources"
+          },
+          "products_services": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogItem"
+            },
+            "type": "array",
+            "title": "Products Services"
+          },
+          "loss_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogItem"
+            },
+            "type": "array",
+            "title": "Loss Reasons"
+          },
+          "pipelines": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineItem"
+            },
+            "type": "array",
+            "title": "Pipelines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_units",
+          "lead_sources",
+          "products_services",
+          "loss_reasons",
+          "pipelines"
+        ],
+        "title": "ReferenceDataResponse"
+      },
+      "SearchResult": {
+        "properties": {
+          "resource_type": {
+            "type": "string",
+            "enum": [
+              "person",
+              "company",
+              "opportunity"
+            ],
+            "title": "Resource Type"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resource_type",
+          "id",
+          "title",
+          "subtitle",
+          "business_unit_ids"
+        ],
+        "title": "SearchResult"
+      },
       "ServiceLogin": {
         "properties": {
           "client_id": {
@@ -841,6 +4088,184 @@
           "client_secret"
         ],
         "title": "ServiceLogin"
+      },
+      "TaskCreate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "opportunity_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Id"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Title"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Priority",
+            "default": "medium"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "title",
+          "due_at"
+        ],
+        "title": "TaskCreate"
+      },
+      "TaskResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "opportunity_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opportunity Id"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At"
+          },
+          "priority": {
+            "type": "string",
+            "title": "Priority"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_unit_id",
+          "opportunity_id",
+          "person_id",
+          "company_id",
+          "title",
+          "due_at",
+          "priority",
+          "status",
+          "completed_at"
+        ],
+        "title": "TaskResponse"
       },
       "TokenResponse": {
         "properties": {
