@@ -4,7 +4,7 @@
 
 1. Copie `.env.example` para `.env`.
 2. Use apenas valores locais e sintéticos.
-3. Defina `STK_DATABASE_URL=postgresql+psycopg://stk_os:stk_os_local_only@localhost:5432/stk_os`.
+3. Defina `STK_DATABASE_URL=postgresql+psycopg://stk_os:stk_os_local_only@localhost:55432/stk_os`.
 4. Gere um segredo JWT local aleatório; nunca reutilize em outro ambiente.
 
 ## Banco
@@ -45,4 +45,3 @@ pnpm quality
 ```
 
 Para testes com PostgreSQL real, defina `STK_TEST_DATABASE_URL` apontando para um banco descartável local. Nunca use banco compartilhado ou produtivo.
-

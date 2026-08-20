@@ -39,8 +39,8 @@ Seed `001_synthetic_organization.sql`: grupo, três entidades conceituais, quatr
 ## 4. Testes e resultados
 
 - Ruff lint/format: aprovado;
-- pytest: 14 aprovados, 1 ignorado, 95,59% de cobertura e zero warnings;
-- teste PostgreSQL real: não executado por ausência de Docker/PostgreSQL nesta máquina;
+- pytest: 15 aprovados, nenhum ignorado, 95,59% de cobertura e zero warnings;
+- teste PostgreSQL real: aprovado contra PostgreSQL 18.4 em container local;
 - ESLint: aprovado sem warnings;
 - Next.js: build de produção aprovado;
 - prova HTTP: API `200` com correlação e frontend `200`;
@@ -57,14 +57,12 @@ Seed `001_synthetic_organization.sql`: grupo, três entidades conceituais, quatr
 
 ## 6. Pendências técnicas
 
-- instalar Docker Desktop ou PostgreSQL 18 e executar migration + seed + teste de integração real;
 - criar remoto oficial e configurar proteção de `main`;
 - definir provedor de identidade, hosting, RLS/grants, backup/restore e observabilidade antes do ambiente compartilhado/produção;
 - executar os Gates A–E apenas nos momentos definidos pelo parecer.
 
 ## 7. Riscos encontrados
 
-- migrations ainda não foram exercitadas contra um processo PostgreSQL real neste host;
 - autenticação local é adequada à fundação, mas não substitui MFA/provedor gerenciado em produção;
 - RLS e grants dependem do provedor e precisam de revisão antes de expor qualquer Data API.
 
@@ -79,8 +77,8 @@ Seed `001_synthetic_organization.sql`: grupo, três entidades conceituais, quatr
 
 ## 9. Parecer de avanço
 
-# NÃO APROVADAS AINDA PARA AVANÇAR À ETAPA 2
+# ETAPAS 0 E 1 APROVADAS — PODE AVANÇAR PARA ETAPA 2
 
-O código e as validações sem banco real estão concluídos. Falta uma única evidência do critério de saída: aplicar e verificar as migrations em PostgreSQL 18 local. Após `docker compose up`, `migrate`, `seed`, `verify` e a suíte PostgreSQL passarem, as Etapas 0 e 1 podem ser aprovadas sem ampliar o escopo.
+Migrations, seed repetível, checksums, proteções append-only, constraints e o fluxo autenticado foram exercitados contra PostgreSQL 18.4 real. O relatório de evidências está em `validacao-postgresql-etapas-0-1.md`.
 
 Nenhum item da Etapa 2 foi iniciado.

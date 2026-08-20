@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     env: str = "development"
-    database_url: str = "postgresql+psycopg://stk_os:stk_os_local_only@localhost:5432/stk_os"
+    database_url: str = "postgresql+psycopg://stk_os:stk_os_local_only@localhost:55432/stk_os"
     jwt_secret: str = Field(min_length=32)
     jwt_issuer: str = "stk-os-local"
     access_token_minutes: int = Field(default=15, ge=1, le=60)
