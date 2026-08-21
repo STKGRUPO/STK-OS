@@ -2,7 +2,7 @@
 
 - **Grupo (`organization`)**: agrupamento consolidado do STK OS.
 - **Entidade Jurídica (`legal_entity`)**: pessoa jurídica/sociedade.
-- **Estabelecimento Fiscal (`fiscal_establishment`)**: matriz ou filial inscrita fiscalmente; futuro emissor de documentos.
+- **Estabelecimento Fiscal (`fiscal_establishment`)**: matriz ou filial inscrita fiscalmente e emissor permitido de documentos.
 - **Unidade de Negócio (`business_unit`)**: operação comercial, como MR, STK Lab ou Stelli. Não substitui estabelecimento fiscal.
 - **Ator (`actor`)**: identidade auditável humana ou de serviço.
 - **Service account**: ator não humano com credencial e capacidades mínimas.
@@ -20,3 +20,20 @@
 - **Atividade**: interação ocorrida e registrada na linha do tempo.
 - **Tarefa**: ação futura com prazo e responsável; a tarefa aberta mais próxima deriva a próxima ação.
 - **Importação CRM**: lote de até cem linhas cuja evidência persiste hash, resultado e referência, sem copiar o payload para a auditoria.
+- **Contrato (`contract`)**: identidade administrativa estável do acordo, vinculada a cliente e unidade.
+- **Versão contratual (`contract_version`)**: snapshot completo, temporal e imutável da configuração do contrato.
+- **Vigência derivada**: intervalo iniciado em `effective_from` e encerrado no dia anterior à próxima versão; a última versão permanece aberta.
+- **Emissor do contrato**: estabelecimento fiscal ativo permitido para emissão; não se confunde com unidade comercial.
+- **Contato financeiro contratual**: referência versionada a um método de contato canônico do cliente ou de pessoa relacionada.
+- **Evento operacional do contrato**: fato append-only de suspensão, retomada, rescisão ou renovação, separado do status administrativo.
+- **Configuração corrente**: versão cuja vigência derivada contém a data consultada.
+- **Competência (`competence_month`)**: mês civil `YYYY-MM`, persistido como o primeiro dia do mês e interpretado no timezone operacional configurado.
+- **Execução de faturamento (`billing_run`)**: operação única por organização, unidade e competência que registra métricas e o resultado de cada contrato considerado.
+- **Obrigação de faturamento (`billing_item`)**: registro financeiro único por contrato e competência, com valor, emissor, versão e snapshot imutável.
+- **Snapshot financeiro**: representação canônica dos fatos contratuais usados para gerar a obrigação, protegida por SHA-256 e imutabilidade no banco.
+- **Pronto (`ready`)**: obrigação íntegra e elegível para solicitação fiscal; não significa NFS-e emitida.
+- **Bloqueado (`blocked`)**: obrigação preservada, mas impedida por dado inválido ou regra ainda pendente, com motivo operacional explícito.
+- **Emissão fiscal (`fiscal_issuance`)**: intenção única e durável de transformar um billing item em NFS-e.
+- **DPS**: declaração assinada enviada à SEFIN; seu identificador é reservado antes da transmissão e usado na reconciliação.
+- **Resultado incerto (`uncertain`)**: transmissão cujo efeito externo não pode ser afirmado após timeout; exige consulta, nunca retry cego.
+- **Documento fiscal**: referência privada e íntegra ao XML, DANFSe ou recibo; o conteúdo é servido somente por rota autenticada.

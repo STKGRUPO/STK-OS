@@ -11,10 +11,10 @@ TARGET = ROOT / "contracts" / "api" / "openapi.json"
 
 def main() -> None:
     TARGET.parent.mkdir(parents=True, exist_ok=True)
-    TARGET.write_text(
-        json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    with TARGET.open("w", encoding="utf-8", newline="\n") as contract_file:
+        contract_file.write(
+            json.dumps(app.openapi(), indent=2, ensure_ascii=False) + "\n"
+        )
     print(TARGET)
 
 

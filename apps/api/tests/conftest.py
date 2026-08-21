@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +22,7 @@ from stk_os.models import (
     Base,
     BusinessUnit,
     FiscalEstablishment,
+    FiscalEstablishmentConfig,
     LeadSource,
     LegalEntity,
     LossReason,
@@ -39,6 +41,8 @@ from stk_os.security import hash_secret
 ORGANIZATION_ID = uuid.UUID("10000000-0000-4000-8000-000000000001")
 LEGAL_ENTITY_ID = uuid.UUID("20000000-0000-4000-8000-000000000001")
 ESTABLISHMENT_ID = uuid.UUID("30000000-0000-4000-8000-000000000001")
+SECOND_LEGAL_ENTITY_ID = uuid.UUID("20000000-0000-4000-8000-000000000002")
+SECOND_ESTABLISHMENT_ID = uuid.UUID("30000000-0000-4000-8000-000000000003")
 UNIT_ID = uuid.UUID("40000000-0000-4000-8000-000000000001")
 LAB_UNIT_ID = uuid.UUID("40000000-0000-4000-8000-000000000002")
 STELLI_UNIT_ID = uuid.UUID("40000000-0000-4000-8000-000000000003")
@@ -76,12 +80,28 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
             code="stk-solucoes",
             registered_name="STK Soluções — sintética",
             trade_name="MR",
+            tax_id="12345678000190",
         )
         establishment = FiscalEstablishment(
             id=ESTABLISHMENT_ID,
             legal_entity_id=LEGAL_ENTITY_ID,
             code="matriz",
             name="Matriz sintética",
+            kind="headquarters",
+            tax_id="12345678000190",
+        )
+        second_entity = LegalEntity(
+            id=SECOND_LEGAL_ENTITY_ID,
+            organization_id=ORGANIZATION_ID,
+            code="zz-st-servicos",
+            registered_name="ST Serviços — sintética",
+            trade_name="ST Serviços",
+        )
+        second_establishment = FiscalEstablishment(
+            id=SECOND_ESTABLISHMENT_ID,
+            legal_entity_id=SECOND_LEGAL_ENTITY_ID,
+            code="matriz-st-servicos",
+            name="Matriz ST Serviços sintética",
             kind="headquarters",
         )
         unit = BusinessUnit(
@@ -134,6 +154,23 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
                 "crm:read",
                 "crm:write",
                 "crm:import",
+                "contracts:read",
+                "contracts:create",
+                "contracts:update",
+                "contracts:version",
+                "contracts:suspend",
+                "contracts:resume",
+                "contracts:terminate",
+                "billing:read",
+                "billing:generate",
+                "billing:review",
+                "billing:reprocess",
+                "identity:manage",
+                "services:read",
+                "services:write",
+                "fiscal:issue",
+                "fiscal:read",
+                "fiscal:reconcile",
             )
         }
         session.add_all(
@@ -141,6 +178,8 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
                 organization,
                 entity,
                 establishment,
+                second_entity,
+                second_establishment,
                 unit,
                 lab_unit,
                 stelli_unit,
@@ -158,6 +197,7 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
                     actor_id=ADMIN_ACTOR_ID,
                     email="admin@example.test",
                     password_hash=hash_secret("synthetic-admin-password"),
+                    password_set_at=datetime.now(UTC),
                 ),
                 ServiceAccount(
                     actor_id=SERVICE_ACTOR_ID,
@@ -174,6 +214,36 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
             session.add(RolePermission(role_id=service_role.id, permission_id=permissions[code].id))
         for code in ("crm:read", "crm:write"):
             session.add(RolePermission(role_id=service_role.id, permission_id=permissions[code].id))
+        session.add(
+            RolePermission(role_id=service_role.id, permission_id=permissions["contracts:read"].id)
+        )
+        for code in ("billing:read", "billing:generate"):
+            session.add(RolePermission(role_id=service_role.id, permission_id=permissions[code].id))
+        for code in ("fiscal:issue", "fiscal:read"):
+            session.add(RolePermission(role_id=service_role.id, permission_id=permissions[code].id))
+        session.add(
+            FiscalEstablishmentConfig(
+                organization_id=ORGANIZATION_ID,
+                establishment_id=ESTABLISHMENT_ID,
+                environment="homologation",
+                provider="sefin_nacional",
+                emission_method="api_a1",
+                endpoint="https://sefin.producaorestrita.nfse.gov.br/api/v1/dps",
+                query_base_url="https://sefin.producaorestrita.nfse.gov.br/api/v1",
+                certificate_secret_ref="vault://synthetic/a1",
+                certificate_key_id="synthetic_a1",
+                municipality_code="3550308",
+                series=1,
+                next_dps_number=1,
+                service_code="010101",
+                nbs_code="101010100",
+                fiscal_rules={
+                    "tax_regime": "lucro_presumido",
+                    "service_profile": "servicos_profissionais",
+                    "iss_percent": "2.00",
+                },
+            )
+        )
         source = LeadSource(
             id=SOURCE_ID,
             organization_id=ORGANIZATION_ID,

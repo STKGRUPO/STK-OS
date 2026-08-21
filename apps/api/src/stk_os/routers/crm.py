@@ -209,8 +209,11 @@ def company_summary(session: Session, company: Company) -> CompanySummary:
         legal_name=company.legal_name,
         trade_name=company.trade_name,
         tax_id=company.tax_id,
+        address_line=company.address_line,
         city=company.city,
         state_code=company.state_code,
+        municipality_code=company.municipality_code,
+        postal_code=company.postal_code,
         site=company.site,
         status=company.status,
         business_unit_ids=unit_ids,
@@ -610,6 +613,8 @@ def update_person(
     for field, value in command.model_dump(exclude_unset=True).items():
         if field == "state_code":
             value = normalize_state(value)
+        if field == "tax_id":
+            value = normalize_tax_id(value, length=11)
         if field == "full_name" and value:
             value = value.strip()
         setattr(person, field, value)
@@ -692,6 +697,8 @@ def create_company(
         address_line=command.address_line,
         city=command.city,
         state_code=normalize_state(command.state_code),
+        municipality_code=command.municipality_code,
+        postal_code=command.postal_code,
         site=command.site,
         notes=command.notes,
         created_by_actor_id=actor.id,
@@ -758,6 +765,8 @@ def update_company(
     for field, value in command.model_dump(exclude_unset=True).items():
         if field == "state_code":
             value = normalize_state(value)
+        if field == "tax_id":
+            value = normalize_tax_id(value, length=14)
         if field == "legal_name" and value:
             value = value.strip()
         setattr(company, field, value)
@@ -1303,6 +1312,22 @@ def create_activity(
     complete_command(record, response.model_dump(mode="json"), response_status=201)
     session.commit()
     return response
+
+
+@router.get("/tasks", response_model=list[TaskResponse])
+def list_tasks(
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("crm:read"))],
+    business_unit_id: uuid.UUID | None = None,
+    status: Annotated[str | None, Query(pattern=r"^(open|completed|cancelled)$")] = None,
+) -> list[TaskResponse]:
+    statement = select(Task).where(Task.organization_id == actor.organization_id)
+    if business_unit_id:
+        statement = statement.where(Task.business_unit_id == business_unit_id)
+    if status:
+        statement = statement.where(Task.status == status)
+    items = session.scalars(statement.order_by(Task.due_at, Task.created_at)).all()
+    return [task_response(item) for item in items]
 
 
 @router.post("/tasks", response_model=TaskResponse, status_code=201)

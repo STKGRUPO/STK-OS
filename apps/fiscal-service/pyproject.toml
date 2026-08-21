@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling==1.28.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stk-fiscal-service"
+version = "0.1.0"
+description = "Serviço fiscal privado do STK OS"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn[standard]==0.52.4",
+  "pydantic-settings==2.15.0",
+  "lxml==6.0.2",
+  "cryptography==46.0.3"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stk_fiscal_service"]

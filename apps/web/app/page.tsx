@@ -1,6 +1,12 @@
 "use client";
 
-import { type DragEvent, type FormEvent, useState } from "react";
+import { type DragEvent, type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+
+import ContractsWorkspace from "./contracts-workspace";
+import BillingWorkspace from "./billing-workspace";
+import ClientServicesPanel from "./client-services-panel";
+import IdentityWorkspace from "./identity-workspace";
+import TasksWorkspace from "./tasks-workspace";
 
 const API_URL = process.env.NEXT_PUBLIC_STK_API_URL ?? "http://127.0.0.1:8000";
 
@@ -43,12 +49,15 @@ type SearchItem = {
   subtitle: string | null;
 };
 type Detail = {
+  id: string;
+  resourceType: "person" | "company";
   title: string;
   subtitle: string;
   opportunities: Opportunity[];
   activities: { id: string; activity_type: string; summary: string; occurred_at: string }[];
   tasks: Task[];
 };
+type Profile = { actor_id: string; display_name: string; email: string; capabilities: string[]; business_unit_ids: string[] };
 type Panel = "person" | "company" | "opportunity" | "import" | null;
 type Notice = { kind: "success" | "error"; text: string } | null;
 
@@ -89,6 +98,9 @@ export default function Home() {
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("admin@stk-os.local");
   const [password, setPassword] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [reference, setReference] = useState<Reference | null>(null);
   const [pipelineId, setPipelineId] = useState("");
   const [kanban, setKanban] = useState<Kanban | null>(null);
@@ -102,6 +114,25 @@ export default function Home() {
   const [notice, setNotice] = useState<Notice>(null);
   const [loading, setLoading] = useState(false);
   const [now] = useState(() => Date.now());
+  const [workspace, setWorkspace] = useState<"crm" | "contracts" | "billing" | "tasks" | "users">("crm");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const showNotice = useCallback((kind: "success" | "error", text: string) => {
+    setNotice({ kind, text });
+  }, []);
+
+  useEffect(() => {
+    const queryToken = new URLSearchParams(window.location.search).get("access_token");
+    if (queryToken) queueMicrotask(() => setAccessToken(queryToken));
+    const shortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setWorkspace("crm");
+        requestAnimationFrame(() => searchRef.current?.focus());
+      }
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, []);
 
   const pipeline = reference?.pipelines.find((item) => item.id === pipelineId) ?? null;
   const unit = reference?.business_units.find((item) => item.id === pipeline?.business_unit_id);
@@ -143,8 +174,12 @@ export default function Home() {
       });
       if (!response.ok) throw new Error("E-mail ou senha inválidos");
       const session = (await response.json()) as { access_token: string };
-      const data = await api<Reference>("/api/v1/crm/reference-data", session.access_token);
+      const [data, activeProfile] = await Promise.all([
+        api<Reference>("/api/v1/crm/reference-data", session.access_token),
+        api<Profile>("/api/v1/auth/me", session.access_token)
+      ]);
       setToken(session.access_token);
+      setProfile(activeProfile);
       setReference(data);
       setPipelineId(data.pipelines[0]?.id ?? "");
       await Promise.all([
@@ -226,6 +261,8 @@ export default function Home() {
       );
       const title = payload.person?.full_name ?? payload.company?.trade_name ?? payload.company?.legal_name ?? item.title;
       setDetail({
+        id: item.id,
+        resourceType: item.resource_type,
         title,
         subtitle: `${item.resource_type === "person" ? "Pessoa" : "Empresa"} · visão 360°`,
         opportunities: payload.opportunities,
@@ -247,6 +284,7 @@ export default function Home() {
   }
 
   if (!token) {
+    if (accessToken) return <PasswordDefinition token={accessToken} onDone={() => { setAccessToken(""); window.history.replaceState({}, "", "/"); setNotice({ kind: "success", text: "Senha definida. Entre com suas credenciais." }); }} />;
     return (
       <main className="login-shell">
         <section className="login-story">
@@ -265,6 +303,8 @@ export default function Home() {
             <label>Senha<input type="password" minLength={12} required value={password} onChange={(event) => setPassword(event.target.value)} /></label>
             <button className="primary" disabled={loading} type="submit">{loading ? "Validando…" : "Entrar no CRM"}</button>
           </form>
+          <button className="login-link" type="button" onClick={() => setRecoveryOpen((value) => !value)}>Esqueci minha senha</button>
+          {recoveryOpen && <RecoveryRequest email={email} onEmail={setEmail} onNotice={setNotice} />}
           {notice && <p className={`notice ${notice.kind}`}>{notice.text}</p>}
           <div className="api-address">API local · {API_URL}</div>
         </section>
@@ -275,19 +315,21 @@ export default function Home() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <div className="brand-mark compact">STK</div>
+        <div className="lovable-brand"><span>STK</span><div><strong>STK OS</strong><small>Ambiente operacional</small></div></div>
         <nav aria-label="Navegação principal">
-          <button className="nav-item active" type="button"><span>◫</span>CRM</button>
-          <button className="nav-item" type="button" onClick={() => setPanel("person")}><span>○</span>Pessoas</button>
-          <button className="nav-item" type="button" onClick={() => setPanel("company")}><span>◇</span>Empresas</button>
-          <button className="nav-item" type="button" onClick={() => setPanel("import")}><span>⇧</span>Importar</button>
+          <button className={`nav-item ${workspace === "crm" ? "active" : ""}`} type="button" onClick={() => setWorkspace("crm")}><span>◫</span>CRM</button>
+          <button className={`nav-item ${workspace === "contracts" ? "active" : ""}`} type="button" onClick={() => setWorkspace("contracts")}><span>▤</span>Contratos</button>
+          <button className={`nav-item ${workspace === "billing" ? "active" : ""}`} type="button" onClick={() => setWorkspace("billing")}><span>▦</span>Faturar</button>
+          <button className={`nav-item ${workspace === "tasks" ? "active" : ""}`} type="button" onClick={() => setWorkspace("tasks")}><span>✓</span>Tarefas</button>
+          {profile?.capabilities.includes("identity:manage") && <button className={`nav-item ${workspace === "users" ? "active" : ""}`} type="button" onClick={() => setWorkspace("users")}><span>○</span>Usuários</button>}
         </nav>
-        <div className="sidebar-footer"><span className="status-dot" />Ambiente local<button type="button" onClick={() => setToken("")}>Sair</button></div>
+        <div className="sidebar-principle"><span>PRINCÍPIO</span><p>O sistema sabe tudo.<br />A tela mostra só o que importa agora.</p></div>
+        <div className="sidebar-footer"><strong>{profile?.display_name}</strong><span>{profile?.email}</span><button type="button" onClick={() => { setToken(""); setProfile(null); }}>Sair</button></div>
       </aside>
-      <section className="workspace">
+      {workspace === "contracts" ? <ContractsWorkspace apiUrl={API_URL} token={token} onNotice={showNotice} /> : workspace === "billing" ? <BillingWorkspace apiUrl={API_URL} token={token} onNotice={showNotice} /> : workspace === "tasks" ? <TasksWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} activeUnitId={pipeline?.business_unit_id ?? ""} onNotice={showNotice} /> : workspace === "users" ? <IdentityWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} onNotice={showNotice} /> : <section className="workspace">
         <header className="topbar">
           <div><p className="overline">CRM · GRUPO STK</p><h1>{unit?.name ?? "Pipeline comercial"}</h1></div>
-          <form className="search" onSubmit={runSearch}><span>⌕</span><input aria-label="Busca global" placeholder="Buscar pessoa, empresa, contato ou negócio" value={search} onChange={(event) => setSearch(event.target.value)} /><button type="submit">Buscar</button></form>
+          <form className="search" onSubmit={runSearch}><span>⌕</span><input ref={searchRef} aria-label="Busca global" placeholder="Buscar pessoa, empresa, contato ou negócio" value={search} onChange={(event) => setSearch(event.target.value)} /><kbd>Ctrl K</kbd><button type="submit">Buscar</button></form>
           <button className="primary new-button" type="button" onClick={() => setPanel("opportunity")}>+ Novo negócio</button>
         </header>
         {results.length > 0 && <div className="search-results">{results.map((item) => <button key={`${item.resource_type}-${item.id}`} type="button" onClick={() => void openResult(item)}><span className="result-icon">{item.resource_type === "person" ? "P" : item.resource_type === "company" ? "E" : "N"}</span><span><strong>{item.title}</strong><small>{item.subtitle}</small></span></button>)}</div>}
@@ -302,13 +344,32 @@ export default function Home() {
             <div className="card-list">{column.opportunities.map((item) => { const isOverdue = Boolean(item.next_action && new Date(item.next_action.due_at).getTime() < now); return <button className="deal-card" draggable key={item.id} type="button" onClick={() => setDeal(item)} onDragStart={(event) => event.dataTransfer.setData("text/opportunity", item.id)}><span className="deal-unit">{item.product_names.join(" · ") || "Serviço a definir"}</span><strong>{item.title}</strong><span className="customer">{item.customer_name}</span><span className="deal-value">{money(item.value, item.currency)}</span><span className="deal-meta"><span>{daysSince(item.stage_entered_at, now)}d na etapa</span><span>{item.last_interaction_at ? `Interação ${shortDate(item.last_interaction_at)}` : "Sem interação"}</span></span><span className={`next-action ${isOverdue ? "overdue" : ""}`}><span>{isOverdue ? "!" : "→"}</span>{item.next_action ? `${shortDate(item.next_action.due_at)} · ${item.next_action.title}` : "Sem próxima ação"}</span></button>; })}{column.opportunities.length === 0 && <div className="empty-column">Arraste um negócio para esta etapa</div>}</div>
           </article>)}
         </section>
-      </section>
+      </section>}
       {notice && <button className={`toast ${notice.kind}`} type="button" onClick={() => setNotice(null)}>{notice.text}<span>×</span></button>}
       {panel && reference && <CreatePanel panel={panel} token={token} reference={reference} people={people} companies={companies} currentPipeline={pipeline} onClose={() => setPanel(null)} onDone={refreshed} onError={(text) => setNotice({ kind: "error", text })} />}
       {deal && reference && <DealDrawer opportunity={deal} reference={reference} token={token} onClose={() => setDeal(null)} onDone={refreshed} onError={(text) => setNotice({ kind: "error", text })} />}
-      {detail && <DetailDrawer detail={detail} onClose={() => setDetail(null)} />}
+      {detail && reference && profile && <DetailDrawer detail={detail} token={token} reference={reference} profile={profile} onNotice={showNotice} onClose={() => setDetail(null)} />}
     </main>
   );
+}
+
+function PasswordDefinition({ token, onDone }: { token: string; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); const values = new FormData(event.currentTarget);
+    const password = String(values.get("password"));
+    if (password !== String(values.get("confirmation"))) { setError("As senhas não coincidem."); setBusy(false); return; }
+    const response = await fetch(`${API_URL}/api/v1/auth/password/define`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) });
+    if (!response.ok) { const payload = await response.json().catch(() => null) as { detail?: string } | null; setError(payload?.detail ?? "Link inválido ou expirado"); setBusy(false); return; }
+    onDone();
+  }
+  return <main className="login-shell"><section className="login-story"><div className="brand-mark">STK</div><p className="overline">PRIMEIRO ACESSO · RECUPERAÇÃO</p><h1>Sua senha pertence somente a você.</h1><p>O link é temporário, de uso único e não contém uma senha criada pelo administrador.</p></section><section className="login-card"><p className="overline">DEFINIÇÃO SEGURA</p><h2>Definir minha senha</h2><form onSubmit={submit}><label>Nova senha<input name="password" type="password" minLength={12} required /></label><label>Confirmar senha<input name="confirmation" type="password" minLength={12} required /></label><button className="primary" disabled={busy} type="submit">{busy ? "Salvando…" : "Definir senha"}</button></form>{error && <p className="notice error">{error}</p>}</section></main>;
+}
+
+function RecoveryRequest({ email, onEmail, onNotice }: { email: string; onEmail: (value: string) => void; onNotice: (notice: Notice) => void }) {
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const response = await fetch(`${API_URL}/api/v1/auth/password-reset/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) }); onNotice({ kind: response.ok ? "success" : "error", text: response.ok ? "Se a conta estiver ativa, a recuperação será disponibilizada pelo canal seguro." : "Não foi possível solicitar a recuperação." }); }
+  return <form className="recovery-form" onSubmit={submit}><label>E-mail da conta<input type="email" value={email} onChange={(event) => onEmail(event.target.value)} required /></label><button type="submit">Solicitar recuperação</button></form>;
 }
 
 function CreatePanel({ panel, token, reference, people, companies, currentPipeline, onClose, onDone, onError }: { panel: Exclude<Panel, null>; token: string; reference: Reference; people: Person[]; companies: Company[]; currentPipeline: Pipeline | null; onClose: () => void; onDone: (message: string) => Promise<void>; onError: (message: string) => void }) {
@@ -363,6 +424,6 @@ function DealDrawer({ opportunity, reference, token, onClose, onDone, onError }:
   return <div className="overlay drawer-overlay" role="presentation" onMouseDown={onClose}><section className="drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="overline">NEGÓCIO · {opportunity.status.toUpperCase()}</p><h2>{opportunity.title}</h2><p>{opportunity.customer_name}</p></div><button type="button" onClick={onClose}>×</button></header><div className="deal-summary"><div><span>Valor</span><strong>{money(opportunity.value)}</strong></div><div><span>Produtos</span><strong>{opportunity.product_names.join(", ") || "A definir"}</strong></div><div><span>Próxima ação</span><strong>{opportunity.next_action?.title ?? "Sem ação"}</strong></div></div><form className="mini-form" onSubmit={(event) => void add("activities", event)}><h3>Registrar interação</h3><div className="form-grid"><select name="type"><option value="call">Ligação</option><option value="email">E-mail</option><option value="meeting">Reunião</option><option value="follow_up">Follow-up</option><option value="note">Observação</option></select><input name="summary" placeholder="Resumo objetivo" required /></div><button disabled={busy} type="submit">Adicionar à linha do tempo</button></form><form className="mini-form" onSubmit={(event) => void add("tasks", event)}><h3>Agendar próxima ação</h3><input name="title" placeholder="O que precisa ser feito?" required /><input name="due_at" type="datetime-local" required /><button disabled={busy} type="submit">Criar tarefa</button></form><div className="close-actions"><button className="won" disabled={busy} type="button" onClick={() => void close("won")}>Marcar como ganho</button><select aria-label="Registrar perda" defaultValue="" disabled={busy} onChange={(event) => { if (event.target.value) void close("lost", event.target.value); }}><option value="" disabled>Registrar perda…</option>{reasons.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div></section></div>;
 }
 
-function DetailDrawer({ detail, onClose }: { detail: Detail; onClose: () => void }) {
-  return <div className="overlay drawer-overlay" role="presentation" onMouseDown={onClose}><section className="drawer detail-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="overline">{detail.subtitle}</p><h2>{detail.title}</h2></div><button type="button" onClick={onClose}>×</button></header><section><h3>Negócios</h3>{detail.opportunities.length ? detail.opportunities.map((item) => <div className="timeline-item" key={item.id}><span>{item.status}</span><strong>{item.title}</strong><small>{money(item.value)}</small></div>) : <p className="muted">Nenhum negócio relacionado.</p>}</section><section><h3>Linha do tempo</h3>{detail.activities.length ? detail.activities.map((item) => <div className="timeline-item" key={item.id}><span>{shortDate(item.occurred_at)}</span><strong>{item.summary}</strong><small>{item.activity_type}</small></div>) : <p className="muted">Nenhuma interação.</p>}</section><section><h3>Tarefas</h3>{detail.tasks.length ? detail.tasks.map((item) => <div className="timeline-item" key={item.id}><span>{shortDate(item.due_at)}</span><strong>{item.title}</strong><small>{item.status}</small></div>) : <p className="muted">Nenhuma tarefa.</p>}</section></section></div>;
+function DetailDrawer({ detail, token, reference, profile, onNotice, onClose }: { detail: Detail; token: string; reference: Reference; profile: Profile; onNotice: (kind: "success" | "error", text: string) => void; onClose: () => void }) {
+  return <div className="overlay drawer-overlay" role="presentation" onMouseDown={onClose}><section className="drawer detail-drawer client-360-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="overline">{detail.subtitle}</p><h2>{detail.title}</h2></div><button type="button" onClick={onClose}>×</button></header>{detail.resourceType === "company" && <ClientServicesPanel apiUrl={API_URL} token={token} companyId={detail.id} actorId={profile.actor_id} units={reference.business_units} products={reference.products_services} onNotice={onNotice} />}<section><h3>Negócios</h3>{detail.opportunities.length ? detail.opportunities.map((item) => <div className="timeline-item" key={item.id}><span>{item.status}</span><strong>{item.title}</strong><small>{money(item.value)}</small></div>) : <p className="muted">Nenhum negócio relacionado.</p>}</section><section><h3>Linha do tempo</h3>{detail.activities.length ? detail.activities.map((item) => <div className="timeline-item" key={item.id}><span>{shortDate(item.occurred_at)}</span><strong>{item.summary}</strong><small>{item.activity_type}</small></div>) : <p className="muted">Nenhuma interação.</p>}</section><section><h3>Tarefas</h3>{detail.tasks.length ? detail.tasks.map((item) => <div className="timeline-item" key={item.id}><span>{shortDate(item.due_at)}</span><strong>{item.title}</strong><small>{item.status}</small></div>) : <p className="muted">Nenhuma tarefa.</p>}</section></section></div>;
 }

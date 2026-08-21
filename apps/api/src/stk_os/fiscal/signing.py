@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+from dataclasses import dataclass
+from pathlib import Path
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from lxml import etree
+
+DS = "http://www.w3.org/2000/09/xmldsig#"
+NFSE = "http://www.sped.fazenda.gov.br/nfse"
+
+
+class CertificateConfigurationError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class CertificateMaterial:
+    certificate_pem: bytes
+    private_key_pem: bytes
+    private_key_password: bytes | None = None
+
+
+class XmlSigner:
+    def sign(self, xml: bytes, material: CertificateMaterial) -> bytes:
+        try:
+            certificate = x509.load_pem_x509_certificate(material.certificate_pem)
+            private_key = serialization.load_pem_private_key(
+                material.private_key_pem, password=material.private_key_password
+            )
+        except (TypeError, ValueError) as error:
+            raise CertificateConfigurationError("Certificado A1 configurado é inválido") from error
+        if not isinstance(private_key, rsa.RSAPrivateKey):
+            raise CertificateConfigurationError("O certificado fiscal exige chave privada RSA")
+        root = etree.fromstring(xml)
+        inf = root.find(f"{{{NFSE}}}infDPS")
+        if inf is None or not inf.get("Id"):
+            raise CertificateConfigurationError("DPS sem infDPS/Id para assinatura")
+        # SHA-1 é exigido pelo comportamento XMLDSIG homologado do legado/SEFIN.
+        digest = base64.b64encode(
+            hashlib.sha1(etree.tostring(inf, method="c14n"), usedforsecurity=False).digest()
+        ).decode()
+        signature = etree.Element(f"{{{DS}}}Signature", nsmap={"ds": DS})
+        signed_info = etree.SubElement(signature, f"{{{DS}}}SignedInfo")
+        etree.SubElement(
+            signed_info,
+            f"{{{DS}}}CanonicalizationMethod",
+            Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
+        )
+        etree.SubElement(
+            signed_info,
+            f"{{{DS}}}SignatureMethod",
+            Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1",
+        )
+        reference = etree.SubElement(signed_info, f"{{{DS}}}Reference", URI=f"#{inf.get('Id')}")
+        transforms = etree.SubElement(reference, f"{{{DS}}}Transforms")
+        etree.SubElement(
+            transforms,
+            f"{{{DS}}}Transform",
+            Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature",
+        )
+        etree.SubElement(
+            transforms,
+            f"{{{DS}}}Transform",
+            Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
+        )
+        etree.SubElement(
+            reference,
+            f"{{{DS}}}DigestMethod",
+            Algorithm="http://www.w3.org/2000/09/xmldsig#sha1",
+        )
+        etree.SubElement(reference, f"{{{DS}}}DigestValue").text = digest
+        # Canonicaliza SignedInfo já no contexto final do documento (namespace default incluso).
+        root.append(signature)
+        signed = etree.tostring(signed_info, method="c14n")
+        value = private_key.sign(signed, padding.PKCS1v15(), hashes.SHA1())  # noqa: S303
+        etree.SubElement(signature, f"{{{DS}}}SignatureValue").text = base64.b64encode(
+            value
+        ).decode()
+        key_info = etree.SubElement(signature, f"{{{DS}}}KeyInfo")
+        x509_data = etree.SubElement(key_info, f"{{{DS}}}X509Data")
+        etree.SubElement(x509_data, f"{{{DS}}}X509Certificate").text = base64.b64encode(
+            certificate.public_bytes(serialization.Encoding.DER)
+        ).decode()
+        return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+
+class MountedSecretResolver:
+    """Resolve material provisionado por vault/secret store em volume somente leitura."""
+
+    def __init__(self, root: Path):
+        self.root = root.resolve()
+
+    def resolve(self, key_id: str) -> CertificateMaterial:
+        safe_key_id = key_id.replace("-", "_")
+        if not safe_key_id or any(
+            char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+            for char in safe_key_id
+        ):
+            raise CertificateConfigurationError("Identificador do certificado é inválido")
+        directory = (self.root / safe_key_id).resolve()
+        if self.root not in directory.parents:
+            raise CertificateConfigurationError(
+                "Referência do certificado está fora do secret mount"
+            )
+        try:
+            certificate = (directory / "certificate.pem").read_bytes()
+            private_key = (directory / "private-key.pem").read_bytes()
+            password_path = directory / "password"
+            password = password_path.read_bytes().strip() if password_path.exists() else None
+        except OSError as error:
+            raise CertificateConfigurationError(
+                "Certificado A1 não foi provisionado no secret mount do serviço"
+            ) from error
+        return CertificateMaterial(certificate, private_key, password or None)

@@ -53,3 +53,62 @@ def test_crm_migrations_define_vertical_and_append_only_history() -> None:
     assert "opportunity_stage_history_no_update" in guards
     assert "opportunity_stage_history_no_delete" in guards
     assert "crm_import_rows_no_update" in guards
+
+
+def test_contract_migration_defines_versioned_append_only_domain() -> None:
+    contracts = (ROOT / "database/migrations/005_versioned_contracts.sql").read_text(
+        encoding="utf-8"
+    )
+    for table in (
+        "contracts",
+        "contract_versions",
+        "contract_version_services",
+        "contract_version_contacts",
+        "contract_operational_events",
+    ):
+        assert f"CREATE TABLE {table}" in contracts
+    assert "issuer_establishment_id" in contracts
+    assert "validate_contract_version_insert" in contracts
+    assert "retroactive contract version" in contracts
+    assert "contract_versions_no_update" in contracts
+    assert "contract_operational_events_no_delete" in contracts
+
+
+def test_billing_migration_defines_idempotent_immutable_core() -> None:
+    billing = (ROOT / "database/migrations/006_billing_core.sql").read_text(encoding="utf-8")
+    for table in ("billing_runs", "billing_items", "billing_run_contracts"):
+        assert f"CREATE TABLE {table}" in billing
+    assert "UNIQUE (contract_id, competence_month)" in billing
+    assert "billing item financial snapshot is immutable" in billing
+    assert "billing_items_no_delete" in billing
+    assert "date_trunc('month', competence_month)" in billing
+
+
+def test_client_services_migration_generalizes_origin_without_rewriting_core() -> None:
+    delta = (ROOT / "database/migrations/007_client_services_identity.sql").read_text(
+        encoding="utf-8"
+    )
+    for table in ("user_access_tokens", "client_services", "client_service_occurrences"):
+        assert f"CREATE TABLE {table}" in delta
+    assert "ALTER TABLE billing_items ALTER COLUMN contract_id DROP NOT NULL" in delta
+    assert "service_occurrence_id" in delta
+    assert "billing_items_service_occurrence_unique" in delta
+    assert "source_type" in delta
+
+
+def test_fiscal_migration_defines_single_idempotent_issuance_and_reconciliation() -> None:
+    fiscal = (ROOT / "database/migrations/008_fiscal_issuance.sql").read_text(
+        encoding="utf-8"
+    )
+    for table in (
+        "fiscal_establishment_configs",
+        "fiscal_issuances",
+        "fiscal_attempts",
+        "fiscal_documents",
+    ):
+        assert f"CREATE TABLE {table}" in fiscal
+    assert "billing_item_id uuid NOT NULL UNIQUE" in fiscal
+    assert "next_dps_number" in fiscal
+    assert "fiscal_issuances_reconcile_idx" in fiscal
+    assert "fiscal issuance identity is immutable" in fiscal
+    assert "certificate_secret_ref" in fiscal

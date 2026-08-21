@@ -6,14 +6,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from stk_os import __version__
 from stk_os.logging import configure_logging
 from stk_os.middleware import CorrelationMiddleware
-from stk_os.routers import auth, control, crm, health, organization
+from stk_os.routers import (
+    auth,
+    billing,
+    client_services,
+    contracts,
+    control,
+    crm,
+    fiscal,
+    health,
+    organization,
+)
 
 configure_logging()
 
 app = FastAPI(
     title="STK OS API",
     version=__version__,
-    description="API transacional do STK OS até a Etapa 2. Backend dono das regras.",
+    description="API transacional do STK OS até a Etapa 6. Backend dono das regras.",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -28,3 +38,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(organization.router, prefix="/api/v1")
 app.include_router(control.router, prefix="/api/v1")
 app.include_router(crm.router, prefix="/api/v1")
+app.include_router(contracts.router, prefix="/api/v1")
+app.include_router(billing.router, prefix="/api/v1")
+app.include_router(client_services.router, prefix="/api/v1")
+app.include_router(fiscal.router, prefix="/api/v1")

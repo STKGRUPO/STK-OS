@@ -86,3 +86,46 @@ VALUES
     ('74000000-0000-4000-8000-000000000035', '73000000-0000-4000-8000-000000000004', 'follow-up', 'Follow-up', 5, 4),
     ('74000000-0000-4000-8000-000000000036', '73000000-0000-4000-8000-000000000004', 'negociacao', 'Negociação', 6, 5)
 ON CONFLICT (pipeline_id, code) DO NOTHING;
+
+INSERT INTO permissions (code, description)
+VALUES
+    ('contracts:read', 'Consultar contratos, versões e configuração histórica'),
+    ('contracts:create', 'Criar a identidade administrativa de contratos'),
+    ('contracts:update', 'Alterar somente metadados administrativos permitidos'),
+    ('contracts:version', 'Publicar e programar versões contratuais imutáveis'),
+    ('contracts:suspend', 'Suspender contrato por evento operacional'),
+    ('contracts:resume', 'Retomar contrato por evento operacional'),
+    ('contracts:terminate', 'Encerrar contrato por evento operacional')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000001', id
+FROM permissions
+WHERE code LIKE 'contracts:%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000002', id
+FROM permissions
+WHERE code = 'contracts:read'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO permissions (code, description)
+VALUES
+    ('billing:read', 'Consultar execuções e obrigações de faturamento'),
+    ('billing:generate', 'Gerar competência de faturamento de forma idempotente'),
+    ('billing:review', 'Revisar bloqueios e exceções de faturamento'),
+    ('billing:reprocess', 'Reexecutar somente operação de faturamento tecnicamente segura')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000001', id
+FROM permissions
+WHERE code LIKE 'billing:%'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000002', id
+FROM permissions
+WHERE code IN ('billing:read', 'billing:generate')
+ON CONFLICT DO NOTHING;

@@ -63,6 +63,8 @@ class CompanyCreate(BaseModel):
     address_line: str | None = Field(default=None, max_length=1000)
     city: str | None = Field(default=None, max_length=255)
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
+    municipality_code: str | None = Field(default=None, pattern=r"^\d{7}$")
+    postal_code: str | None = Field(default=None, pattern=r"^\d{8}$")
     site: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=4000)
     business_unit_ids: list[uuid.UUID] = Field(min_length=1, max_length=3)
@@ -73,9 +75,12 @@ class CompanyCreate(BaseModel):
 class CompanyUpdate(BaseModel):
     legal_name: str | None = Field(default=None, min_length=2, max_length=255)
     trade_name: str | None = Field(default=None, max_length=255)
+    tax_id: str | None = Field(default=None, min_length=14, max_length=18)
     address_line: str | None = Field(default=None, max_length=1000)
     city: str | None = Field(default=None, max_length=255)
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
+    municipality_code: str | None = Field(default=None, pattern=r"^\d{7}$")
+    postal_code: str | None = Field(default=None, pattern=r"^\d{8}$")
     site: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=4000)
     status: Literal["active", "inactive"] | None = None
@@ -86,8 +91,11 @@ class CompanySummary(BaseModel):
     legal_name: str
     trade_name: str | None
     tax_id: str | None
+    address_line: str | None
     city: str | None
     state_code: str | None
+    municipality_code: str | None
+    postal_code: str | None
     site: str | None
     status: str
     business_unit_ids: list[uuid.UUID]

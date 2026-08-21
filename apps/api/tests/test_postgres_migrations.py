@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import psycopg
@@ -53,6 +54,10 @@ def test_postgres_foundation_invariants() -> None:
             "002_append_only_guards.sql",
             "003_crm_vertical.sql",
             "004_crm_append_only_guards.sql",
+            "005_versioned_contracts.sql",
+            "006_billing_core.sql",
+            "007_client_services_identity.sql",
+            "008_fiscal_issuance.sql",
         ]
 
         expected_checksums = [
@@ -100,6 +105,21 @@ def test_postgres_foundation_invariants() -> None:
             "tasks",
             "crm_import_jobs",
             "crm_import_rows",
+            "contracts",
+            "contract_versions",
+            "contract_version_services",
+            "contract_version_contacts",
+            "contract_operational_events",
+            "billing_runs",
+            "billing_items",
+            "billing_run_contracts",
+            "user_access_tokens",
+            "client_services",
+            "client_service_occurrences",
+            "fiscal_establishment_configs",
+            "fiscal_issuances",
+            "fiscal_attempts",
+            "fiscal_documents",
         } <= tables
 
         seed_counts = connection.execute(
@@ -422,3 +442,487 @@ def test_postgres_foundation_invariants() -> None:
             """
         ).fetchone()
         assert crm_counts == (1, 1, 3, 1, 1, 1, 1, 1)
+
+        contact_id = uuid.uuid4()
+        contract_id = uuid.uuid4()
+        version_1_id = uuid.uuid4()
+        version_2_id = uuid.uuid4()
+        service_id = uuid.UUID("72000000-0000-4000-8000-000000000001")
+        issuer_1_id = uuid.UUID("30000000-0000-4000-8000-000000000001")
+        issuer_2_id = uuid.UUID("30000000-0000-4000-8000-000000000003")
+        connection.execute(
+            """
+            INSERT INTO contact_methods (
+                id, organization_id, company_id, kind, value, normalized_value, is_primary
+            ) VALUES (%s, %s, %s, 'email', 'contracts@example.test',
+                      'contracts@example.test', true)
+            """,
+            (contact_id, organization_id, company_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contracts (
+                id, organization_id, business_unit_id, customer_company_id,
+                internal_number, start_date, contract_type, owner_actor_id, created_by_actor_id
+            ) VALUES (%s, %s, %s, %s, 'CT-PG-001', current_date,
+                      'recurring_service', %s, %s)
+            """,
+            (contract_id, organization_id, unit_id, company_id, actor_id, actor_id),
+        )
+        with pytest.raises(errors.RaiseException, match="not linked"):
+            connection.execute(
+                """
+                INSERT INTO contracts (
+                    organization_id, business_unit_id, customer_company_id,
+                    internal_number, start_date, contract_type, owner_actor_id,
+                    created_by_actor_id
+                ) VALUES (%s, %s, %s, 'CT-CROSS-UNIT', current_date,
+                          'other', %s, %s)
+                """,
+                (
+                    organization_id,
+                    uuid.UUID("40000000-0000-4000-8000-000000000002"),
+                    company_id,
+                    actor_id,
+                    actor_id,
+                ),
+            )
+        version_values = (
+            version_1_id,
+            organization_id,
+            contract_id,
+            issuer_1_id,
+            actor_id,
+        )
+        connection.execute(
+            """
+            INSERT INTO contract_versions (
+                id, organization_id, contract_id, version_number, effective_from,
+                issuer_establishment_id, currency, billing_frequency, pricing_model,
+                amount, billing_installments, change_type, change_reason, source,
+                configuration_sha256, created_by_actor_id
+            ) VALUES (%s, %s, %s, 1, current_date, %s, 'BRL', 'monthly',
+                      'annual', 12000.00, 12, 'initial', 'Baseline sintética', 'api',
+                      %s, %s)
+            """,
+            (*version_values[:4], "a" * 64, version_values[4]),
+        )
+        connection.execute(
+            """
+            INSERT INTO contract_version_services (
+                contract_version_id, product_service_id, contractual_description,
+                quantity, unit_amount, is_active
+            ) VALUES (%s, %s, 'Serviço contratual sintético', 1.000, 12000.00, true)
+            """,
+            (version_1_id, service_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contract_version_contacts (
+                contract_version_id, contact_method_id, recipient_role,
+                purpose, preferred_channel
+            ) VALUES (%s, %s, 'primary', 'billing', 'email')
+            """,
+            (version_1_id, contact_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contract_versions (
+                id, organization_id, contract_id, version_number, effective_from,
+                issuer_establishment_id, currency, billing_frequency, pricing_model,
+                amount, billing_installments, change_type, change_reason, source,
+                configuration_sha256, created_by_actor_id
+            ) VALUES (%s, %s, %s, 2, current_date + 1, %s, 'BRL', 'monthly',
+                      'annual', 13200.00, 12, 'issuer_change', 'Novo emissor sintético',
+                      'api', %s, %s)
+            """,
+            (
+                version_2_id,
+                organization_id,
+                contract_id,
+                issuer_2_id,
+                "b" * 64,
+                actor_id,
+            ),
+        )
+        with pytest.raises(errors.RaiseException, match="sequential and non-overlapping"):
+            connection.execute(
+                """
+                INSERT INTO contract_versions (
+                    organization_id, contract_id, version_number, effective_from,
+                    issuer_establishment_id, currency, billing_frequency, pricing_model,
+                    amount, change_type, change_reason, source,
+                    configuration_sha256, created_by_actor_id
+                ) VALUES (%s, %s, 3, current_date + 1, %s, 'BRL', 'monthly',
+                          'annual', 1.00, 'conditions_change', 'Sobreposição sintética',
+                          'api', %s, %s)
+                """,
+                (organization_id, contract_id, issuer_1_id, "c" * 64, actor_id),
+            )
+        with pytest.raises(errors.RaiseException, match="append-only"):
+            connection.execute(
+                "UPDATE contract_versions SET amount = 1.00 WHERE id = %s", (version_1_id,)
+            )
+
+        event_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+        for index, event_type in enumerate(("suspended", "resumed", "terminated"), start=2):
+            connection.execute(
+                """
+                INSERT INTO contract_operational_events (
+                    id, organization_id, contract_id, event_type, effective_on,
+                    reason, source, actor_id, correlation_id
+                ) VALUES (%s, %s, %s, %s, current_date + %s,
+                          'Evento operacional sintético', 'api', %s, %s)
+                """,
+                (
+                    event_ids[index - 2],
+                    organization_id,
+                    contract_id,
+                    event_type,
+                    index,
+                    actor_id,
+                    correlation_id,
+                ),
+            )
+        with pytest.raises(errors.RaiseException, match="append-only"):
+            connection.execute(
+                "DELETE FROM contract_operational_events WHERE id = %s", (event_ids[0],)
+            )
+        contract_values = connection.execute(
+            """
+            SELECT
+                (SELECT count(*) FROM contracts),
+                (SELECT count(*) FROM contract_versions),
+                (SELECT amount::text FROM contract_versions WHERE id = %s),
+                (SELECT count(*) FROM contract_operational_events)
+            """,
+            (version_1_id,),
+        ).fetchone()
+        assert contract_values == (1, 2, "12000.00", 3)
+
+        billing_run_id = uuid.uuid4()
+        connection.execute(
+            """
+            INSERT INTO billing_runs (
+                id, organization_id, business_unit_id, competence_month, run_type,
+                status, operational_timezone, rule_version, actor_id, correlation_id,
+                completed_at
+            ) VALUES (%s, %s, %s, date_trunc('month', current_date)::date, 'manual',
+                      'completed', 'America/Sao_Paulo', 'billing-competence-v1',
+                      %s, %s, now())
+            """,
+            (billing_run_id, organization_id, unit_id, actor_id, correlation_id),
+        )
+        with pytest.raises(errors.UniqueViolation):
+            connection.execute(
+                """
+                INSERT INTO billing_runs (
+                    organization_id, business_unit_id, competence_month, run_type,
+                    operational_timezone, rule_version, actor_id, correlation_id
+                ) VALUES (%s, %s, date_trunc('month', current_date)::date, 'scheduled',
+                          'America/Sao_Paulo', 'billing-competence-v1', %s, %s)
+                """,
+                (organization_id, unit_id, actor_id, correlation_id),
+            )
+        with pytest.raises(errors.CheckViolation):
+            connection.execute(
+                """
+                INSERT INTO billing_runs (
+                    organization_id, business_unit_id, competence_month, run_type,
+                    operational_timezone, rule_version, actor_id, correlation_id
+                ) VALUES (%s, %s, date_trunc('month', current_date)::date + 1, 'manual',
+                          'America/Sao_Paulo', 'billing-competence-v1', %s, %s)
+                """,
+                (organization_id, unit_id, actor_id, correlation_id),
+            )
+
+        insert_item = """
+            INSERT INTO billing_items (
+                id, organization_id, business_unit_id, created_by_run_id, contract_id,
+                contract_version_id, competence_month, customer_company_id,
+                issuer_establishment_id, currency, gross_amount, snapshot,
+                snapshot_sha256, status, correlation_id, created_by_actor_id
+            ) VALUES (%s, %s, %s, %s, %s, %s,
+                      date_trunc('month', current_date)::date, %s, %s, 'BRL', 1000.00,
+                      %s, %s, 'ready', %s, %s)
+        """
+
+        def concurrent_insert(item_id: uuid.UUID) -> str:
+            try:
+                with psycopg.connect(postgres_test_url(), autocommit=True) as worker:
+                    worker.execute(
+                        insert_item,
+                        (
+                            item_id,
+                            organization_id,
+                            unit_id,
+                            billing_run_id,
+                            contract_id,
+                            version_1_id,
+                            company_id,
+                            issuer_1_id,
+                            "{}",
+                            "d" * 64,
+                            correlation_id,
+                            actor_id,
+                        ),
+                    )
+                return "created"
+            except errors.UniqueViolation:
+                return "duplicate"
+
+        item_ids = (uuid.uuid4(), uuid.uuid4())
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(concurrent_insert, item_ids))
+        assert sorted(outcomes) == ["created", "duplicate"]
+        assert connection.execute(
+            "SELECT count(*) FROM billing_items WHERE contract_id = %s", (contract_id,)
+        ).fetchone() == (1,)
+        stored_item_id = connection.execute(
+            "SELECT id FROM billing_items WHERE contract_id = %s", (contract_id,)
+        ).fetchone()[0]
+        with pytest.raises(errors.RaiseException, match="snapshot is immutable"):
+            connection.execute(
+                "UPDATE billing_items SET gross_amount = 999.00 WHERE id = %s",
+                (stored_item_id,),
+            )
+
+
+@pytest.mark.postgres
+def test_postgres_migration_007_client_services_and_billing_origins() -> None:
+    with psycopg.connect(postgres_test_url(), autocommit=True) as connection:
+        applied = apply_foundation(connection)
+        assert applied[-1] == "007_client_services_identity.sql"
+
+        nullable = connection.execute(
+            """
+            SELECT is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'client_services'
+              AND column_name = 'contract_id'
+            """
+        ).fetchone()
+        assert nullable == ("YES",)
+
+        foreign_keys = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE contype = 'f'
+                  AND conrelid IN (
+                      'client_services'::regclass,
+                      'client_service_occurrences'::regclass
+                  )
+                """
+            )
+        }
+        assert any(
+            "contract_id" in definition and "contracts" in definition for definition in foreign_keys
+        )
+        assert any(
+            "client_service_id" in definition and "client_services" in definition
+            for definition in foreign_keys
+        )
+        assert any(
+            "billing_item_id" in definition and "billing_items" in definition
+            for definition in foreign_keys
+        )
+
+        organization_id = uuid.UUID("10000000-0000-4000-8000-000000000001")
+        unit_id = uuid.UUID("40000000-0000-4000-8000-000000000001")
+        issuer_id = uuid.UUID("30000000-0000-4000-8000-000000000001")
+        actor_id = uuid.uuid4()
+        company_id = uuid.uuid4()
+        contract_id = uuid.uuid4()
+        version_id = uuid.uuid4()
+        correlation_id = uuid.uuid4()
+
+        connection.execute(
+            """
+            INSERT INTO actors (id, organization_id, kind, display_name)
+            VALUES (%s, %s, 'user', 'Gate 007 PostgreSQL')
+            """,
+            (actor_id, organization_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO companies (id, organization_id, legal_name, created_by_actor_id)
+            VALUES (%s, %s, 'Cliente Gate 007', %s)
+            """,
+            (company_id, organization_id, actor_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO company_business_units (
+                organization_id, company_id, business_unit_id, owner_actor_id
+            ) VALUES (%s, %s, %s, %s)
+            """,
+            (organization_id, company_id, unit_id, actor_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contracts (
+                id, organization_id, business_unit_id, customer_company_id,
+                internal_number, administrative_status, start_date, contract_type,
+                owner_actor_id, created_by_actor_id
+            ) VALUES (%s, %s, %s, %s, 'GATE-007', 'active', current_date,
+                      'recurring_service', %s, %s)
+            """,
+            (contract_id, organization_id, unit_id, company_id, actor_id, actor_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contract_versions (
+                id, organization_id, contract_id, version_number, effective_from,
+                issuer_establishment_id, currency, billing_frequency, pricing_model,
+                amount, change_type, change_reason, source, configuration_sha256,
+                created_by_actor_id
+            ) VALUES (%s, %s, %s, 1, current_date, %s, 'BRL', 'monthly',
+                      'monthly', 900.00, 'initial', 'Gate migration 007', 'system',
+                      %s, %s)
+            """,
+            (version_id, organization_id, contract_id, issuer_id, "a" * 64, actor_id),
+        )
+
+        services = {
+            "contract_recurring": (uuid.uuid4(), "recurring", "monthly", contract_id),
+            "service_recurring": (uuid.uuid4(), "recurring", "quarterly", None),
+            "service_one_time": (uuid.uuid4(), "one_time", None, None),
+        }
+        occurrences: dict[str, uuid.UUID] = {}
+        for source_type, (
+            service_id,
+            service_type,
+            recurrence,
+            service_contract_id,
+        ) in services.items():
+            connection.execute(
+                """
+                INSERT INTO client_services (
+                    id, organization_id, business_unit_id, customer_company_id,
+                    contract_id, name, service_type, recurrence, start_date,
+                    next_occurrence_on, owner_actor_id, amount, currency,
+                    operational_lead_days, reminder_lead_days, created_by_actor_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, current_date,
+                          current_date, %s, 900.00, 'BRL', 5, 2, %s)
+                """,
+                (
+                    service_id,
+                    organization_id,
+                    unit_id,
+                    company_id,
+                    service_contract_id,
+                    source_type,
+                    service_type,
+                    recurrence,
+                    actor_id,
+                    actor_id,
+                ),
+            )
+            occurrence_id = uuid.uuid4()
+            occurrences[source_type] = occurrence_id
+            connection.execute(
+                """
+                INSERT INTO client_service_occurrences (
+                    id, organization_id, client_service_id, scheduled_for, due_on,
+                    status, billing_status, owner_actor_id, created_by_actor_id
+                ) VALUES (%s, %s, %s, current_date, current_date, 'planned',
+                          'to_bill', %s, %s)
+                """,
+                (occurrence_id, organization_id, service_id, actor_id, actor_id),
+            )
+
+        with pytest.raises(errors.CheckViolation):
+            connection.execute(
+                """
+                INSERT INTO client_services (
+                    organization_id, business_unit_id, customer_company_id, name,
+                    service_type, recurrence, start_date, owner_actor_id, amount,
+                    created_by_actor_id
+                ) VALUES (%s, %s, %s, 'Pontual inválido', 'one_time', 'monthly',
+                          current_date, %s, 1.00, %s)
+                """,
+                (organization_id, unit_id, company_id, actor_id, actor_id),
+            )
+        with pytest.raises(errors.ForeignKeyViolation):
+            connection.execute(
+                """
+                INSERT INTO client_service_occurrences (
+                    organization_id, client_service_id, scheduled_for, due_on,
+                    owner_actor_id, created_by_actor_id
+                ) VALUES (%s, %s, current_date + 1, current_date + 1, %s, %s)
+                """,
+                (organization_id, uuid.uuid4(), actor_id, actor_id),
+            )
+        with pytest.raises(errors.UniqueViolation):
+            connection.execute(
+                """
+                INSERT INTO client_service_occurrences (
+                    organization_id, client_service_id, scheduled_for, due_on,
+                    owner_actor_id, created_by_actor_id
+                ) VALUES (%s, %s, current_date, current_date, %s, %s)
+                """,
+                (
+                    organization_id,
+                    services["service_recurring"][0],
+                    actor_id,
+                    actor_id,
+                ),
+            )
+
+        for source_type, (service_id, _, _, service_contract_id) in services.items():
+            item_id = uuid.uuid4()
+            version = version_id if source_type == "contract_recurring" else None
+            connection.execute(
+                """
+                INSERT INTO billing_items (
+                    id, organization_id, business_unit_id, created_by_run_id,
+                    source_type, client_service_id, service_occurrence_id,
+                    contract_id, contract_version_id, competence_month,
+                    customer_company_id, issuer_establishment_id, currency,
+                    gross_amount, snapshot, snapshot_sha256, status,
+                    correlation_id, created_by_actor_id
+                ) VALUES (%s, %s, %s, NULL, %s, %s, %s, %s, %s,
+                          date_trunc('month', current_date)::date, %s, %s, 'BRL',
+                          900.00, '{}'::jsonb, %s, 'ready', %s, %s)
+                """,
+                (
+                    item_id,
+                    organization_id,
+                    unit_id,
+                    source_type,
+                    service_id,
+                    occurrences[source_type],
+                    service_contract_id,
+                    version,
+                    company_id,
+                    issuer_id,
+                    "b" * 64,
+                    correlation_id,
+                    actor_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE client_service_occurrences
+                SET billing_item_id = %s, billing_status = 'item_created'
+                WHERE id = %s
+                """,
+                (item_id, occurrences[source_type]),
+            )
+
+        assert connection.execute(
+            """
+            SELECT source_type, count(*)
+            FROM billing_items
+            GROUP BY source_type
+            ORDER BY source_type
+            """
+        ).fetchall() == [
+            ("contract_recurring", 1),
+            ("service_one_time", 1),
+            ("service_recurring", 1),
+        ]

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "STK OS API",
-    "description": "API transacional do STK OS até a Etapa 2. Backend dono das regras.",
+    "description": "API transacional do STK OS até a Etapa 6. Backend dono das regras.",
     "version": "0.1.0"
   },
   "paths": {
@@ -80,6 +80,316 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Current User",
+        "operationId": "current_user_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentUser"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/roles": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "List Roles",
+        "operationId": "list_roles_api_v1_auth_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IdentityRole"
+                  },
+                  "type": "array",
+                  "title": "Response List Roles Api V1 Auth Roles Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/users": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "List Users",
+        "operationId": "list_users_api_v1_auth_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Users Api V1 Auth Users Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/users/invite": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Invite User",
+        "operationId": "invite_user_api_v1_auth_users_invite_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInvite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedAccessLink"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/users/{user_id}/password-reset": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Issue Password Reset",
+        "operationId": "issue_password_reset_api_v1_auth_users__user_id__password_reset_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedAccessLink"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/password-reset/request": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Request Password Reset",
+        "operationId": "request_password_reset_api_v1_auth_password_reset_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/password/define": {
+      "post": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Define Password",
+        "operationId": "define_password_api_v1_auth_password_define_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordDefinition"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericMessage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/users/{user_id}/deactivate": {
+      "patch": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Deactivate User",
+        "operationId": "deactivate_user_api_v1_auth_users__user_id__deactivate_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSummary"
                 }
               }
             }
@@ -1262,6 +1572,80 @@
       }
     },
     "/api/v1/crm/tasks": {
+      "get": {
+        "tags": [
+          "crm"
+        ],
+        "summary": "List Tasks",
+        "operationId": "list_tasks_api_v1_crm_tasks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(open|completed|cancelled)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskResponse"
+                  },
+                  "title": "Response List Tasks Api V1 Crm Tasks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "crm"
@@ -1586,6 +1970,2023 @@
           }
         }
       }
+    },
+    "/api/v1/contracts/reference-data": {
+      "get": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Reference Data",
+        "operationId": "reference_data_api_v1_contracts_reference_data_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractReferenceData"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/contracts": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Create Contract",
+        "operationId": "create_contract_api_v1_contracts_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "List Contracts",
+        "operationId": "list_contracts_api_v1_contracts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "customer_company_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Company Id"
+            }
+          },
+          {
+            "name": "administrative_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Administrative Status"
+            }
+          },
+          {
+            "name": "issuer_establishment_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Issuer Establishment Id"
+            }
+          },
+          {
+            "name": "valid_on",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valid On"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContractSummary"
+                  },
+                  "title": "Response List Contracts Api V1 Contracts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}": {
+      "get": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Read Contract",
+        "operationId": "read_contract_api_v1_contracts__contract_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/history": {
+      "get": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Contract History",
+        "operationId": "contract_history_api_v1_contracts__contract_id__history_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/configuration": {
+      "get": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Configuration On Date",
+        "operationId": "configuration_on_date_api_v1_contracts__contract_id__configuration_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractConfiguration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/versions": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Create Version",
+        "operationId": "create_version_api_v1_contracts__contract_id__versions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/schedule": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Schedule Version",
+        "operationId": "schedule_version_api_v1_contracts__contract_id__schedule_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/suspend": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Suspend Contract",
+        "operationId": "suspend_contract_api_v1_contracts__contract_id__suspend_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationalEventCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractEventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/resume": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Resume Contract",
+        "operationId": "resume_contract_api_v1_contracts__contract_id__resume_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationalEventCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractEventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/terminate": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Terminate Contract",
+        "operationId": "terminate_contract_api_v1_contracts__contract_id__terminate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationalEventCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractEventResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contract_id}/renew": {
+      "post": {
+        "tags": [
+          "contracts"
+        ],
+        "summary": "Renew Contract",
+        "operationId": "renew_contract_api_v1_contracts__contract_id__renew_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "contract_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Contract Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractVersionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/runs": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Generate Competence",
+        "operationId": "generate_competence_api_v1_billing_runs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingGenerate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Runs",
+        "operationId": "list_runs_api_v1_billing_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competence_month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competence Month"
+            }
+          },
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BillingRunResponse"
+                  },
+                  "title": "Response List Runs Api V1 Billing Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_api_v1_billing_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/runs/{run_id}/reprocess": {
+      "post": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Reprocess Run",
+        "operationId": "reprocess_run_api_v1_billing_runs__run_id__reprocess_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/items": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Items",
+        "operationId": "list_items_api_v1_billing_items_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competence_month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competence Month"
+            }
+          },
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "customer_company_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Company Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(blocked|ready|requested|completed|cancelled)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BillingItemSummary"
+                  },
+                  "title": "Response List Items Api V1 Billing Items Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/items/{item_id}": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Get Item",
+        "operationId": "get_item_api_v1_billing_items__item_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingItemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/exceptions": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "List Exceptions",
+        "operationId": "list_exceptions_api_v1_billing_exceptions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competence_month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competence Month"
+            }
+          },
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BillingExceptionResponse"
+                  },
+                  "title": "Response List Exceptions Api V1 Billing Exceptions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/summary": {
+      "get": {
+        "tags": [
+          "billing"
+        ],
+        "summary": "Billing Summary",
+        "operationId": "billing_summary_api_v1_billing_summary_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "competence_month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Competence Month"
+            }
+          },
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingSummaryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client-services": {
+      "get": {
+        "tags": [
+          "client-services"
+        ],
+        "summary": "List Services",
+        "operationId": "list_services_api_v1_client_services_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "customer_company_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Company Id"
+            }
+          },
+          {
+            "name": "business_unit_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Business Unit Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(active|inactive)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClientServiceResponse"
+                  },
+                  "title": "Response List Services Api V1 Client Services Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "client-services"
+        ],
+        "summary": "Create Service",
+        "operationId": "create_service_api_v1_client_services_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientServiceCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientServiceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client-services/{service_id}": {
+      "patch": {
+        "tags": [
+          "client-services"
+        ],
+        "summary": "Update Service",
+        "operationId": "update_service_api_v1_client_services__service_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientServiceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientServiceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client-services/{service_id}/occurrences/generate": {
+      "post": {
+        "tags": [
+          "client-services"
+        ],
+        "summary": "Generate Occurrences",
+        "operationId": "generate_occurrences_api_v1_client_services__service_id__occurrences_generate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OccurrenceGenerate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientServiceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client-services/{service_id}/occurrences/{occurrence_id}": {
+      "patch": {
+        "tags": [
+          "client-services"
+        ],
+        "summary": "Update Occurrence",
+        "operationId": "update_occurrence_api_v1_client_services__service_id__occurrences__occurrence_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Id"
+            }
+          },
+          {
+            "name": "occurrence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Occurrence Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OccurrenceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientServiceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client-services/{service_id}/occurrences/{occurrence_id}/billing-item": {
+      "post": {
+        "tags": [
+          "client-services"
+        ],
+        "summary": "Create Billing Item",
+        "operationId": "create_billing_item_api_v1_client_services__service_id__occurrences__occurrence_id__billing_item_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Service Id"
+            }
+          },
+          {
+            "name": "occurrence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Occurrence Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Billing Item Api V1 Client Services  Service Id  Occurrences  Occurrence Id  Billing Item Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/items/{item_id}/issue": {
+      "post": {
+        "tags": [
+          "fiscal"
+        ],
+        "summary": "Issue Billing Item",
+        "operationId": "issue_billing_item_api_v1_billing_items__item_id__issue_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiscalIssuanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/items/{item_id}/issuance": {
+      "get": {
+        "tags": [
+          "fiscal"
+        ],
+        "summary": "Get Item Issuance",
+        "operationId": "get_item_issuance_api_v1_billing_items__item_id__issuance_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiscalIssuanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fiscal/issuances/{issuance_id}/reconcile": {
+      "post": {
+        "tags": [
+          "fiscal"
+        ],
+        "summary": "Reconcile Issuance",
+        "operationId": "reconcile_issuance_api_v1_fiscal_issuances__issuance_id__reconcile_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "issuance_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Issuance Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FiscalReconcileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiscalIssuanceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fiscal/documents/{document_id}/content": {
+      "get": {
+        "tags": [
+          "fiscal"
+        ],
+        "summary": "Fiscal Document Content",
+        "operationId": "fiscal_document_content_api_v1_fiscal_documents__document_id__content_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/one-time": {
+      "post": {
+        "tags": [
+          "fiscal"
+        ],
+        "summary": "Create One Time Billing",
+        "operationId": "create_one_time_billing_api_v1_billing_one_time_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 255,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OneTimeBillingCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OneTimeBillingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1889,6 +4290,880 @@
         ],
         "title": "AuditEventResponse"
       },
+      "BillingExceptionResponse": {
+        "properties": {
+          "billing_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Billing Item Id"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "contract_number": {
+            "type": "string",
+            "title": "Contract Number"
+          },
+          "competence_month": {
+            "type": "string",
+            "title": "Competence Month"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "billing_item_id",
+          "contract_id",
+          "contract_number",
+          "competence_month",
+          "customer_name",
+          "code",
+          "reason",
+          "created_at"
+        ],
+        "title": "BillingExceptionResponse"
+      },
+      "BillingGenerate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "competence_month": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Competence Month"
+          },
+          "run_type": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "scheduled"
+            ],
+            "title": "Run Type",
+            "default": "manual"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "competence_month"
+        ],
+        "title": "BillingGenerate"
+      },
+      "BillingHistoryEvent": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "audit",
+              "outbox"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Correlation Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "occurred_at",
+          "correlation_id"
+        ],
+        "title": "BillingHistoryEvent"
+      },
+      "BillingItemDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "created_by_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Run Id"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "client_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Service Id"
+          },
+          "service_occurrence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Occurrence Id"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "contract_number": {
+            "type": "string",
+            "title": "Contract Number"
+          },
+          "contract_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version Id"
+          },
+          "contract_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version Number"
+          },
+          "competence_month": {
+            "type": "string",
+            "title": "Competence Month"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "business_unit_name": {
+            "type": "string",
+            "title": "Business Unit Name"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "issuer_establishment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Establishment Id"
+          },
+          "issuer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Name"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "gross_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "blocking_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Code"
+          },
+          "blocking_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Reason"
+          },
+          "snapshot_sha256": {
+            "type": "string",
+            "title": "Snapshot Sha256"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Correlation Id"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Snapshot"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/BillingHistoryEvent"
+            },
+            "type": "array",
+            "title": "History"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_by_run_id",
+          "source_type",
+          "client_service_id",
+          "service_occurrence_id",
+          "contract_id",
+          "contract_number",
+          "contract_version_id",
+          "contract_version_number",
+          "competence_month",
+          "business_unit_id",
+          "business_unit_name",
+          "customer_company_id",
+          "customer_name",
+          "issuer_establishment_id",
+          "issuer_name",
+          "currency",
+          "gross_amount",
+          "status",
+          "blocking_code",
+          "blocking_reason",
+          "snapshot_sha256",
+          "correlation_id",
+          "causation_id",
+          "created_at",
+          "updated_at",
+          "snapshot",
+          "history"
+        ],
+        "title": "BillingItemDetail"
+      },
+      "BillingItemSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "created_by_run_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Run Id"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type"
+          },
+          "client_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Service Id"
+          },
+          "service_occurrence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Occurrence Id"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "contract_number": {
+            "type": "string",
+            "title": "Contract Number"
+          },
+          "contract_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version Id"
+          },
+          "contract_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Version Number"
+          },
+          "competence_month": {
+            "type": "string",
+            "title": "Competence Month"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "business_unit_name": {
+            "type": "string",
+            "title": "Business Unit Name"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "issuer_establishment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Establishment Id"
+          },
+          "issuer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer Name"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "gross_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Amount"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "blocking_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Code"
+          },
+          "blocking_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Reason"
+          },
+          "snapshot_sha256": {
+            "type": "string",
+            "title": "Snapshot Sha256"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Correlation Id"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_by_run_id",
+          "source_type",
+          "client_service_id",
+          "service_occurrence_id",
+          "contract_id",
+          "contract_number",
+          "contract_version_id",
+          "contract_version_number",
+          "competence_month",
+          "business_unit_id",
+          "business_unit_name",
+          "customer_company_id",
+          "customer_name",
+          "issuer_establishment_id",
+          "issuer_name",
+          "currency",
+          "gross_amount",
+          "status",
+          "blocking_code",
+          "blocking_reason",
+          "snapshot_sha256",
+          "correlation_id",
+          "causation_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BillingItemSummary"
+      },
+      "BillingRunContractResponse": {
+        "properties": {
+          "contract_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contract Id"
+          },
+          "contract_number": {
+            "type": "string",
+            "title": "Contract Number"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "billing_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Item Id"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "reason_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contract_id",
+          "contract_number",
+          "customer_name",
+          "billing_item_id",
+          "outcome",
+          "reason_code",
+          "reason_detail"
+        ],
+        "title": "BillingRunContractResponse"
+      },
+      "BillingRunResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "business_unit_name": {
+            "type": "string",
+            "title": "Business Unit Name"
+          },
+          "competence_month": {
+            "type": "string",
+            "title": "Competence Month"
+          },
+          "run_type": {
+            "type": "string",
+            "title": "Run Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "operational_timezone": {
+            "type": "string",
+            "title": "Operational Timezone"
+          },
+          "rule_version": {
+            "type": "string",
+            "title": "Rule Version"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Actor Id"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Correlation Id"
+          },
+          "causation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Causation Id"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/BillingRunContractResponse"
+            },
+            "type": "array",
+            "title": "Contracts",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "business_unit_id",
+          "business_unit_name",
+          "competence_month",
+          "run_type",
+          "status",
+          "operational_timezone",
+          "rule_version",
+          "actor_id",
+          "correlation_id",
+          "causation_id",
+          "metrics",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "BillingRunResponse"
+      },
+      "BillingSummaryResponse": {
+        "properties": {
+          "competence_month": {
+            "type": "string",
+            "title": "Competence Month"
+          },
+          "predicted_gross_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Predicted Gross Amount"
+          },
+          "eligible_contracts": {
+            "type": "integer",
+            "title": "Eligible Contracts"
+          },
+          "blocked_contracts": {
+            "type": "integer",
+            "title": "Blocked Contracts"
+          },
+          "blocked_gross_amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Blocked Gross Amount"
+          },
+          "ready_contracts": {
+            "type": "integer",
+            "title": "Ready Contracts"
+          },
+          "by_business_unit": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "By Business Unit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competence_month",
+          "predicted_gross_amount",
+          "eligible_contracts",
+          "blocked_contracts",
+          "blocked_gross_amount",
+          "ready_contracts",
+          "by_business_unit"
+        ],
+        "title": "BillingSummaryResponse"
+      },
       "BusinessUnitResponse": {
         "properties": {
           "id": {
@@ -1985,6 +5260,552 @@
           "name"
         ],
         "title": "CatalogItem"
+      },
+      "ClientServiceCreate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "product_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Service Id"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "service_type": {
+            "type": "string",
+            "enum": [
+              "recurring",
+              "one_time"
+            ],
+            "title": "Service Type"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "monthly",
+                  "quarterly",
+                  "semiannual",
+                  "annual",
+                  "custom"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 120.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "owner_actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Actor Id"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,19}0*$)\\d{0,16}\\.\\d{0,2}0*$)"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "BRL"
+          },
+          "operational_lead_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 0.0,
+            "title": "Operational Lead Days",
+            "default": 0
+          },
+          "reminder_lead_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 0.0,
+            "title": "Reminder Lead Days",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "customer_company_id",
+          "name",
+          "service_type",
+          "start_date",
+          "owner_actor_id",
+          "amount"
+        ],
+        "title": "ClientServiceCreate"
+      },
+      "ClientServiceOccurrenceResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "scheduled_for": {
+            "type": "string",
+            "format": "date",
+            "title": "Scheduled For"
+          },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Due On"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "billing_status": {
+            "type": "string",
+            "title": "Billing Status"
+          },
+          "billing_item_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Item Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "scheduled_for",
+          "due_on",
+          "status",
+          "billing_status",
+          "billing_item_id",
+          "created_at"
+        ],
+        "title": "ClientServiceOccurrenceResponse"
+      },
+      "ClientServiceResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "product_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Service Id"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "contract_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Number"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "service_type": {
+            "type": "string",
+            "title": "Service Type"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "next_occurrence_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Occurrence On"
+          },
+          "owner_actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Actor Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "operational_lead_days": {
+            "type": "integer",
+            "title": "Operational Lead Days"
+          },
+          "reminder_lead_days": {
+            "type": "integer",
+            "title": "Reminder Lead Days"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/ClientServiceOccurrenceResponse"
+            },
+            "type": "array",
+            "title": "Occurrences"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "business_unit_id",
+          "customer_company_id",
+          "customer_name",
+          "product_service_id",
+          "contract_id",
+          "contract_number",
+          "name",
+          "description",
+          "service_type",
+          "recurrence",
+          "interval_months",
+          "start_date",
+          "next_occurrence_on",
+          "owner_actor_id",
+          "owner_name",
+          "amount",
+          "currency",
+          "operational_lead_days",
+          "reminder_lead_days",
+          "status",
+          "occurrences",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ClientServiceResponse"
+      },
+      "ClientServiceUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "contract_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contract Id"
+          },
+          "recurrence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "monthly",
+                  "quarterly",
+                  "semiannual",
+                  "annual",
+                  "custom"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurrence"
+          },
+          "interval_months": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 120.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Months"
+          },
+          "owner_actor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Actor Id"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,19}0*$)\\d{0,16}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "operational_lead_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operational Lead Days"
+          },
+          "reminder_lead_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reminder Lead Days"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ClientServiceUpdate"
       },
       "Company360Response": {
         "properties": {
@@ -2100,6 +5921,30 @@
             ],
             "title": "State Code"
           },
+          "municipality_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{7}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Municipality Code"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
           "site": {
             "anyOf": [
               {
@@ -2195,6 +6040,17 @@
             ],
             "title": "Tax Id"
           },
+          "address_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address Line"
+          },
           "city": {
             "anyOf": [
               {
@@ -2216,6 +6072,28 @@
               }
             ],
             "title": "State Code"
+          },
+          "municipality_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Municipality Code"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
           },
           "site": {
             "anyOf": [
@@ -2264,8 +6142,11 @@
           "legal_name",
           "trade_name",
           "tax_id",
+          "address_line",
           "city",
           "state_code",
+          "municipality_code",
+          "postal_code",
           "site",
           "status",
           "business_unit_ids",
@@ -2301,6 +6182,19 @@
               }
             ],
             "title": "Trade Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 18,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
           },
           "address_line": {
             "anyOf": [
@@ -2338,6 +6232,30 @@
               }
             ],
             "title": "State Code"
+          },
+          "municipality_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{7}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Municipality Code"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
           },
           "site": {
             "anyOf": [
@@ -2482,6 +6400,1156 @@
         ],
         "title": "ContactMethodResponse"
       },
+      "ContractConfiguration": {
+        "properties": {
+          "contract": {
+            "$ref": "#/components/schemas/ContractSummary"
+          },
+          "on_date": {
+            "type": "string",
+            "format": "date",
+            "title": "On Date"
+          },
+          "operational_state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "terminated"
+            ],
+            "title": "Operational State"
+          },
+          "version": {
+            "$ref": "#/components/schemas/ContractVersionResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contract",
+          "on_date",
+          "operational_state",
+          "version"
+        ],
+        "title": "ContractConfiguration"
+      },
+      "ContractCreate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "internal_number": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Internal Number"
+          },
+          "signed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed On"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "contract_type": {
+            "type": "string",
+            "enum": [
+              "recurring_service",
+              "project",
+              "retainer",
+              "other"
+            ],
+            "title": "Contract Type"
+          },
+          "owner_actor_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Actor Id"
+          },
+          "controlled_notes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controlled Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "customer_company_id",
+          "internal_number",
+          "start_date",
+          "contract_type"
+        ],
+        "title": "ContractCreate"
+      },
+      "ContractDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "business_unit_name": {
+            "type": "string",
+            "title": "Business Unit Name"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "internal_number": {
+            "type": "string",
+            "title": "Internal Number"
+          },
+          "administrative_status": {
+            "type": "string",
+            "title": "Administrative Status"
+          },
+          "signed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed On"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "contract_type": {
+            "type": "string",
+            "title": "Contract Type"
+          },
+          "owner_actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Actor Id"
+          },
+          "current_operational_state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "terminated"
+            ],
+            "title": "Current Operational State"
+          },
+          "current_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Number"
+          },
+          "current_issuer_establishment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Issuer Establishment Id"
+          },
+          "current_issuer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Issuer Name"
+          },
+          "current_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Amount"
+          },
+          "current_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Currency"
+          },
+          "scheduled_versions": {
+            "type": "integer",
+            "title": "Scheduled Versions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "controlled_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controlled Notes"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ContractVersionResponse"
+            },
+            "type": "array",
+            "title": "Versions"
+          },
+          "operational_events": {
+            "items": {
+              "$ref": "#/components/schemas/ContractEventResponse"
+            },
+            "type": "array",
+            "title": "Operational Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_unit_id",
+          "business_unit_name",
+          "customer_company_id",
+          "customer_name",
+          "internal_number",
+          "administrative_status",
+          "signed_on",
+          "start_date",
+          "contract_type",
+          "owner_actor_id",
+          "current_operational_state",
+          "current_version_number",
+          "current_issuer_establishment_id",
+          "current_issuer_name",
+          "current_amount",
+          "current_currency",
+          "scheduled_versions",
+          "created_at",
+          "updated_at",
+          "controlled_notes",
+          "versions",
+          "operational_events"
+        ],
+        "title": "ContractDetail"
+      },
+      "ContractEventResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "effective_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective On"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "related_version_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Version Id"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Actor Id"
+          },
+          "correlation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "effective_on",
+          "reason",
+          "source",
+          "related_version_id",
+          "actor_id",
+          "correlation_id",
+          "created_at"
+        ],
+        "title": "ContractEventResponse"
+      },
+      "ContractReferenceData": {
+        "properties": {
+          "business_units": {
+            "items": {
+              "$ref": "#/components/schemas/ContractReferenceItem"
+            },
+            "type": "array",
+            "title": "Business Units"
+          },
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/ContractReferenceItem"
+            },
+            "type": "array",
+            "title": "Companies"
+          },
+          "fiscal_establishments": {
+            "items": {
+              "$ref": "#/components/schemas/ContractReferenceItem"
+            },
+            "type": "array",
+            "title": "Fiscal Establishments"
+          },
+          "products_services": {
+            "items": {
+              "$ref": "#/components/schemas/ContractReferenceItem"
+            },
+            "type": "array",
+            "title": "Products Services"
+          },
+          "contact_methods": {
+            "items": {
+              "$ref": "#/components/schemas/ContractReferenceItem"
+            },
+            "type": "array",
+            "title": "Contact Methods"
+          }
+        },
+        "type": "object",
+        "required": [
+          "business_units",
+          "companies",
+          "fiscal_establishments",
+          "products_services",
+          "contact_methods"
+        ],
+        "title": "ContractReferenceData"
+      },
+      "ContractReferenceItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "business_unit_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Unit Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "person_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "primary_establishment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Establishment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ContractReferenceItem"
+      },
+      "ContractSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "business_unit_name": {
+            "type": "string",
+            "title": "Business Unit Name"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "customer_name": {
+            "type": "string",
+            "title": "Customer Name"
+          },
+          "internal_number": {
+            "type": "string",
+            "title": "Internal Number"
+          },
+          "administrative_status": {
+            "type": "string",
+            "title": "Administrative Status"
+          },
+          "signed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed On"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Start Date"
+          },
+          "contract_type": {
+            "type": "string",
+            "title": "Contract Type"
+          },
+          "owner_actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner Actor Id"
+          },
+          "current_operational_state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "terminated"
+            ],
+            "title": "Current Operational State"
+          },
+          "current_version_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Number"
+          },
+          "current_issuer_establishment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Issuer Establishment Id"
+          },
+          "current_issuer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Issuer Name"
+          },
+          "current_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Amount"
+          },
+          "current_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Currency"
+          },
+          "scheduled_versions": {
+            "type": "integer",
+            "title": "Scheduled Versions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "business_unit_id",
+          "business_unit_name",
+          "customer_company_id",
+          "customer_name",
+          "internal_number",
+          "administrative_status",
+          "signed_on",
+          "start_date",
+          "contract_type",
+          "owner_actor_id",
+          "current_operational_state",
+          "current_version_number",
+          "current_issuer_establishment_id",
+          "current_issuer_name",
+          "current_amount",
+          "current_currency",
+          "scheduled_versions",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ContractSummary"
+      },
+      "ContractVersionCreate": {
+        "properties": {
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "issuer_establishment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Issuer Establishment Id"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "default": "BRL"
+          },
+          "billing_frequency": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "annual",
+              "one_time",
+              "other"
+            ],
+            "title": "Billing Frequency"
+          },
+          "pricing_model": {
+            "type": "string",
+            "enum": [
+              "monthly",
+              "annual",
+              "project",
+              "per_service",
+              "other"
+            ],
+            "title": "Pricing Model"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,19}0*$)\\d{0,16}\\.\\d{0,2}0*$)"
+              }
+            ],
+            "title": "Amount"
+          },
+          "billing_installments": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 120.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Installments"
+          },
+          "billing_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 31.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Day"
+          },
+          "payment_terms_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Terms Days"
+          },
+          "invoice_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Description"
+          },
+          "adjustment_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Reference"
+          },
+          "adjustment_frequency": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "annual",
+                  "custom",
+                  "none"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Frequency"
+          },
+          "adjustment_base_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Base Date"
+          },
+          "adjustment_applied_percentage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,3}|(?=[\\d.]{1,10}0*$)\\d{0,3}\\.\\d{0,6}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Applied Percentage"
+          },
+          "adjustment_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "manual",
+                  "index",
+                  "not_applied"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Source"
+          },
+          "change_type": {
+            "type": "string",
+            "enum": [
+              "initial",
+              "service_change",
+              "value_change",
+              "issuer_change",
+              "conditions_change",
+              "adjustment",
+              "renewal"
+            ],
+            "title": "Change Type"
+          },
+          "change_reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Change Reason"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ui",
+              "api",
+              "import",
+              "system"
+            ],
+            "title": "Source",
+            "default": "api"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/VersionServiceInput"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Services"
+          },
+          "financial_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/VersionContactInput"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Financial Contacts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "effective_from",
+          "issuer_establishment_id",
+          "billing_frequency",
+          "pricing_model",
+          "amount",
+          "change_type",
+          "change_reason",
+          "services",
+          "financial_contacts"
+        ],
+        "title": "ContractVersionCreate"
+      },
+      "ContractVersionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "contract_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contract Id"
+          },
+          "version_number": {
+            "type": "integer",
+            "title": "Version Number"
+          },
+          "effective_from": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective From"
+          },
+          "effective_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Until"
+          },
+          "temporal_status": {
+            "type": "string",
+            "enum": [
+              "historical",
+              "current",
+              "scheduled"
+            ],
+            "title": "Temporal Status"
+          },
+          "issuer_establishment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Issuer Establishment Id"
+          },
+          "issuer_name": {
+            "type": "string",
+            "title": "Issuer Name"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "billing_frequency": {
+            "type": "string",
+            "title": "Billing Frequency"
+          },
+          "pricing_model": {
+            "type": "string",
+            "title": "Pricing Model"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "billing_installments": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Installments"
+          },
+          "billing_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billing Day"
+          },
+          "payment_terms_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Terms Days"
+          },
+          "invoice_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Description"
+          },
+          "adjustment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Reference"
+          },
+          "adjustment_frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Frequency"
+          },
+          "adjustment_base_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Base Date"
+          },
+          "adjustment_applied_percentage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Applied Percentage"
+          },
+          "adjustment_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Source"
+          },
+          "change_type": {
+            "type": "string",
+            "title": "Change Type"
+          },
+          "change_reason": {
+            "type": "string",
+            "title": "Change Reason"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "configuration_sha256": {
+            "type": "string",
+            "title": "Configuration Sha256"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/VersionServiceResponse"
+            },
+            "type": "array",
+            "title": "Services"
+          },
+          "financial_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/VersionContactResponse"
+            },
+            "type": "array",
+            "title": "Financial Contacts"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "contract_id",
+          "version_number",
+          "effective_from",
+          "effective_until",
+          "temporal_status",
+          "issuer_establishment_id",
+          "issuer_name",
+          "currency",
+          "billing_frequency",
+          "pricing_model",
+          "amount",
+          "billing_installments",
+          "billing_day",
+          "payment_terms_days",
+          "invoice_description",
+          "adjustment_reference",
+          "adjustment_frequency",
+          "adjustment_base_date",
+          "adjustment_applied_percentage",
+          "adjustment_source",
+          "change_type",
+          "change_reason",
+          "source",
+          "configuration_sha256",
+          "services",
+          "financial_contacts",
+          "created_at"
+        ],
+        "title": "ContractVersionResponse"
+      },
       "CrmImportCreate": {
         "properties": {
           "source_label": {
@@ -2558,6 +7626,77 @@
           "rows"
         ],
         "title": "CrmImportResponse"
+      },
+      "CurrentUser": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Actor Id"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Organization Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "first_access_completed": {
+            "type": "boolean",
+            "title": "First Access Completed"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityRole"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "actor_id",
+          "organization_id",
+          "email",
+          "display_name",
+          "status",
+          "first_access_completed",
+          "roles",
+          "business_unit_ids",
+          "capabilities"
+        ],
+        "title": "CurrentUser"
       },
       "ExceptionCreate": {
         "properties": {
@@ -2649,6 +7788,161 @@
         ],
         "title": "ExceptionResponse"
       },
+      "FiscalAttemptResponse": {
+        "properties": {
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "external_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Status"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Category"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "sanitized_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sanitized Detail"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempt_number",
+          "operation",
+          "outcome",
+          "external_status",
+          "error_category",
+          "error_code",
+          "sanitized_detail",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "FiscalAttemptResponse"
+      },
+      "FiscalDocumentResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "document_type": {
+            "type": "string",
+            "title": "Document Type"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          },
+          "content_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Sha256"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "download_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "document_type",
+          "content_type",
+          "content_sha256",
+          "size_bytes",
+          "status",
+          "download_path"
+        ],
+        "title": "FiscalDocumentResponse"
+      },
       "FiscalEstablishmentResponse": {
         "properties": {
           "id": {
@@ -2697,6 +7991,207 @@
         ],
         "title": "FiscalEstablishmentResponse"
       },
+      "FiscalIssuanceResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "billing_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Billing Item Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "environment": {
+            "type": "string",
+            "title": "Environment"
+          },
+          "issuer_establishment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Issuer Establishment Id"
+          },
+          "issuer_name": {
+            "type": "string",
+            "title": "Issuer Name"
+          },
+          "series": {
+            "type": "integer",
+            "title": "Series"
+          },
+          "dps_number": {
+            "type": "integer",
+            "title": "Dps Number"
+          },
+          "dps_id": {
+            "type": "string",
+            "title": "Dps Id"
+          },
+          "nfse_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nfse Number"
+          },
+          "access_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Key"
+          },
+          "provider_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Reference"
+          },
+          "error_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Category"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At"
+          },
+          "last_reconciled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reconciled At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/FiscalDocumentResponse"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/FiscalAttemptResponse"
+            },
+            "type": "array",
+            "title": "Attempts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "billing_item_id",
+          "status",
+          "environment",
+          "issuer_establishment_id",
+          "issuer_name",
+          "series",
+          "dps_number",
+          "dps_id",
+          "nfse_number",
+          "access_key",
+          "provider_reference",
+          "error_category",
+          "error_code",
+          "error_message",
+          "requested_at",
+          "last_reconciled_at",
+          "completed_at",
+          "documents",
+          "attempts"
+        ],
+        "title": "FiscalIssuanceResponse"
+      },
+      "FiscalReconcileRequest": {
+        "properties": {
+          "resend_if_confirmed_not_found": {
+            "type": "boolean",
+            "title": "Resend If Confirmed Not Found",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FiscalReconcileRequest"
+      },
+      "GenericMessage": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "GenericMessage"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2709,6 +8204,38 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "IdentityRole": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "name",
+          "capabilities"
+        ],
+        "title": "IdentityRole"
       },
       "ImportCompanyRow": {
         "properties": {
@@ -2998,6 +8525,38 @@
         ],
         "title": "InboxEventResponse"
       },
+      "IssuedAccessLink": {
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserSummary"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "invite",
+              "password_reset"
+            ],
+            "title": "Purpose"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user",
+          "purpose",
+          "token",
+          "expires_at"
+        ],
+        "title": "IssuedAccessLink"
+      },
       "KanbanColumn": {
         "properties": {
           "stage": {
@@ -3086,6 +8645,203 @@
           "establishments"
         ],
         "title": "LegalEntityResponse"
+      },
+      "OccurrenceGenerate": {
+        "properties": {
+          "through": {
+            "type": "string",
+            "format": "date",
+            "title": "Through"
+          }
+        },
+        "type": "object",
+        "required": [
+          "through"
+        ],
+        "title": "OccurrenceGenerate"
+      },
+      "OccurrenceUpdate": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "preparing",
+              "scheduled",
+              "in_progress",
+              "completed",
+              "to_bill",
+              "billed",
+              "closed"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "OccurrenceUpdate"
+      },
+      "OneTimeBillingCreate": {
+        "properties": {
+          "business_unit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Business Unit Id"
+          },
+          "customer_company_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Customer Company Id"
+          },
+          "product_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Service Id"
+          },
+          "service_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Service Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 2,
+            "title": "Description"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reference"
+          },
+          "service_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Service Date"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,19}0*$)\\d{0,16}\\.\\d{0,2}0*$)"
+              }
+            ],
+            "title": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "const": "BRL",
+            "title": "Currency",
+            "default": "BRL"
+          },
+          "issuer_establishment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Issuer Establishment Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "business_unit_id",
+          "customer_company_id",
+          "service_name",
+          "description",
+          "reference",
+          "service_date",
+          "amount",
+          "issuer_establishment_id"
+        ],
+        "title": "OneTimeBillingCreate"
+      },
+      "OneTimeBillingResponse": {
+        "properties": {
+          "client_service_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Client Service Id"
+          },
+          "service_occurrence_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Service Occurrence Id"
+          },
+          "billing_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Billing Item Id"
+          },
+          "billing_status": {
+            "type": "string",
+            "title": "Billing Status"
+          },
+          "fiscal_issuance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FiscalIssuanceResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_service_id",
+          "service_occurrence_id",
+          "billing_item_id",
+          "billing_status"
+        ],
+        "title": "OneTimeBillingResponse"
+      },
+      "OperationalEventCreate": {
+        "properties": {
+          "effective_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Effective On"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Reason"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ui",
+              "api",
+              "import",
+              "system"
+            ],
+            "title": "Source",
+            "default": "api"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "effective_on",
+          "reason"
+        ],
+        "title": "OperationalEventCreate"
       },
       "OpportunityCreate": {
         "properties": {
@@ -3509,6 +9265,43 @@
           "legal_entities"
         ],
         "title": "OrganizationResponse"
+      },
+      "PasswordDefinition": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 32,
+            "title": "Token"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 12,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "PasswordDefinition"
+      },
+      "PasswordResetRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "PasswordResetRequest"
       },
       "Person360Response": {
         "properties": {
@@ -4291,6 +10084,44 @@
         ],
         "title": "TokenResponse"
       },
+      "UserInvite": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Display Name"
+          },
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email",
+          "display_name",
+          "role_id"
+        ],
+        "title": "UserInvite"
+      },
       "UserLogin": {
         "properties": {
           "email": {
@@ -4312,6 +10143,76 @@
           "password"
         ],
         "title": "UserLogin"
+      },
+      "UserSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "actor_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Actor Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "first_access_completed": {
+            "type": "boolean",
+            "title": "First Access Completed"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityRole"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "actor_id",
+          "email",
+          "display_name",
+          "status",
+          "first_access_completed",
+          "last_login_at",
+          "roles",
+          "business_unit_ids"
+        ],
+        "title": "UserSummary"
       },
       "ValidationError": {
         "properties": {
@@ -4352,6 +10253,223 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VersionContactInput": {
+        "properties": {
+          "contact_method_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Method Id"
+          },
+          "recipient_role": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "cc"
+            ],
+            "title": "Recipient Role"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Purpose",
+            "default": "billing"
+          },
+          "preferred_channel": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone",
+              "whatsapp"
+            ],
+            "title": "Preferred Channel",
+            "default": "email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "contact_method_id",
+          "recipient_role"
+        ],
+        "title": "VersionContactInput"
+      },
+      "VersionContactResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "contact_method_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Contact Method Id"
+          },
+          "contact_name": {
+            "type": "string",
+            "title": "Contact Name"
+          },
+          "contact_value": {
+            "type": "string",
+            "title": "Contact Value"
+          },
+          "recipient_role": {
+            "type": "string",
+            "title": "Recipient Role"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "preferred_channel": {
+            "type": "string",
+            "title": "Preferred Channel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "contact_method_id",
+          "contact_name",
+          "contact_value",
+          "recipient_role",
+          "purpose",
+          "preferred_channel"
+        ],
+        "title": "VersionContactResponse"
+      },
+      "VersionServiceInput": {
+        "properties": {
+          "product_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Service Id"
+          },
+          "contractual_description": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Contractual Description"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,11}|(?=[\\d.]{1,15}0*$)\\d{0,11}\\.\\d{0,3}0*$)"
+              }
+            ],
+            "title": "Quantity",
+            "default": "1"
+          },
+          "unit_amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,19}0*$)\\d{0,16}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Amount"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "contractual_description"
+        ],
+        "title": "VersionServiceInput"
+      },
+      "VersionServiceResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "product_service_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Service Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "contractual_description": {
+            "type": "string",
+            "title": "Contractual Description"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Quantity"
+          },
+          "unit_amount": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Amount"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "product_service_id",
+          "product_name",
+          "contractual_description",
+          "quantity",
+          "unit_amount",
+          "is_active"
+        ],
+        "title": "VersionServiceResponse"
       }
     },
     "securitySchemes": {

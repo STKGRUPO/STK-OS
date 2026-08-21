@@ -1,6 +1,6 @@
 # STK OS
 
-Implementação executável do STK OS V1 até a Etapa 2 aprovada no Parecer Técnico do Marco 0: fundação, identidade, estrutura organizacional, trilha de controle e CRM vertical mínimo.
+Implementação executável do STK OS V1 até a Etapa 6: fundação, CRM, contratos versionados, billing core e emissão idempotente de NFS-e por serviço fiscal privado.
 
 ## Escopo atual
 
@@ -15,8 +15,22 @@ Implementação executável do STK OS V1 até a Etapa 2 aprovada no Parecer Téc
 - pipelines, oportunidades, participantes, histórico de etapas, atividades e tarefas;
 - próxima ação derivada da tarefa aberta mais próxima;
 - API, Kanban responsivo, busca, visão 360° e importação pequena/auditável.
+- contratos com identidade administrativa separada de versões temporais imutáveis;
+- snapshots de valor, recorrência, vencimentos, reajuste, emissor, serviços e contatos;
+- consulta histórica, atual, futura e por data arbitrária;
+- suspensão, retomada, rescisão e renovação como eventos operacionais append-only;
+- workspace web de contratos com filtros, diferenças entre versões e ações protegidas por capacidade.
+- competência mensal `YYYY-MM` com timezone empresarial explícito;
+- execuções e obrigações únicas por contrato/competência, seguras sob repetição e concorrência;
+- valor bruto em `Decimal`, snapshot financeiro imutável e SHA-256 canônico;
+- bloqueios/exceções rastreáveis, auditoria, outbox e workspace financeiro mínimo.
+- billing items de contrato recorrente, serviço recorrente sem contrato e serviço pontual;
+- serviço fiscal Python privado com DPS v1.01, XMLDSIG, mTLS SEFIN e A1 em secret mount;
+- uma intenção fiscal por billing item, lease, tentativas auditáveis e reconciliação por DPS;
+- referências privadas a XML/DANFSe e download autenticado pelo backend;
+- emissão avulsa baseada exclusivamente em cliente canônico do CRM.
 
-Contratos, faturamento, NFS-e, Outlook, n8n, IA e MCP não fazem parte desta etapa.
+Cobrança, boleto, recebimento, cancelamento/substituição, envio ao cliente, Outlook, n8n, IA e MCP não fazem parte desta etapa.
 
 ## Pré-requisitos
 
@@ -30,11 +44,12 @@ Contratos, faturamento, NFS-e, Outlook, n8n, IA e MCP não fazem parte desta eta
 1. Copie `.env.example` para `.env` e preencha somente valores locais.
 2. Execute `docker compose -f infrastructure/local/compose.yaml up -d`.
 3. Crie o ambiente Python: `python -m venv .venv`.
-4. Ative-o e instale: `python -m pip install -r apps/api/requirements.lock` e depois `python -m pip install --no-deps -e apps/api`.
+4. Ative-o e instale: `python -m pip install -r apps/api/requirements.lock`, `python -m pip install --no-deps -e apps/api` e `python -m pip install --no-deps -e apps/fiscal-service`.
 5. Rode `python scripts/database.py migrate` e `python scripts/database.py seed`.
 6. Crie as identidades locais: `python scripts/bootstrap_identity.py`.
 7. Instale o frontend: `pnpm install --frozen-lockfile`.
-8. Inicie a API com `pnpm api:dev` e o frontend com `pnpm web:dev`.
+8. Provisione os mounts de secrets descritos em `apps/fiscal-service/README.md`.
+9. Inicie o serviço fiscal com `pnpm fiscal:dev`, a API com `pnpm api:dev` e o frontend com `pnpm web:dev`.
 
 O guia completo está em [docs/runbooks/desenvolvimento-local.md](docs/runbooks/desenvolvimento-local.md).
 

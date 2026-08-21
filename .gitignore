@@ -37,6 +37,7 @@ coverage/
 *.sqlite3
 payloads/
 private/
+.stk-private/
 
 # Operating systems and editors
 .DS_Store
