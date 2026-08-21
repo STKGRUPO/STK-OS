@@ -15,7 +15,7 @@ os.environ["STK_JWT_SECRET"] = "test-only-secret-with-at-least-thirty-two-charac
 os.environ["STK_JWT_ISSUER"] = "stk-os-test"
 
 from stk_os.database import get_session
-from stk_os.main import app
+from stk_os.main import app, fastapi_app
 from stk_os.models import (
     Actor,
     ActorRole,
@@ -302,9 +302,9 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
         with session_factory() as session:
             yield session
 
-    app.dependency_overrides[get_session] = override_session
+    fastapi_app.dependency_overrides[get_session] = override_session
     yield
-    app.dependency_overrides.clear()
+    fastapi_app.dependency_overrides.clear()
 
 
 @pytest.fixture

@@ -20,13 +20,26 @@ from stk_os.routers import (
 
 configure_logging()
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title="STK OS API",
     version=__version__,
     description="API transacional do STK OS até a Etapa 6. Backend dono das regras.",
 )
-app.add_middleware(
-    CORSMiddleware,
+fastapi_app.add_middleware(CorrelationMiddleware)
+fastapi_app.include_router(health.router)
+fastapi_app.include_router(auth.router, prefix="/api/v1")
+fastapi_app.include_router(organization.router, prefix="/api/v1")
+fastapi_app.include_router(control.router, prefix="/api/v1")
+fastapi_app.include_router(crm.router, prefix="/api/v1")
+fastapi_app.include_router(contracts.router, prefix="/api/v1")
+fastapi_app.include_router(billing.router, prefix="/api/v1")
+fastapi_app.include_router(client_services.router, prefix="/api/v1")
+fastapi_app.include_router(fiscal.router, prefix="/api/v1")
+
+# Keep CORS outside FastAPI's error middleware so even an unhandled 500 carries
+# the browser-visible CORS headers instead of being reported as a network error.
+app = CORSMiddleware(
+    app=fastapi_app,
     allow_origins=[
         "http://127.0.0.1:3000",
         "http://localhost:3000",
@@ -37,13 +50,3 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID"],
 )
-app.add_middleware(CorrelationMiddleware)
-app.include_router(health.router)
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(organization.router, prefix="/api/v1")
-app.include_router(control.router, prefix="/api/v1")
-app.include_router(crm.router, prefix="/api/v1")
-app.include_router(contracts.router, prefix="/api/v1")
-app.include_router(billing.router, prefix="/api/v1")
-app.include_router(client_services.router, prefix="/api/v1")
-app.include_router(fiscal.router, prefix="/api/v1")

@@ -8,6 +8,7 @@ from typing import Any
 
 import jwt
 from pwdlib import PasswordHash
+from pwdlib.exceptions import UnknownHashError
 
 from stk_os.config import get_settings
 
@@ -19,7 +20,13 @@ def hash_secret(secret: str) -> str:
 
 
 def verify_secret(secret: str, encoded: str) -> bool:
-    return password_hash.verify(secret, encoded)
+    try:
+        return password_hash.verify(secret, encoded)
+    except UnknownHashError:
+        # A legacy, truncated or otherwise unsupported database value is an
+        # invalid credential. It must never turn a public login attempt into
+        # an internal server error.
+        return False
 
 
 def create_access_token(*, actor_id: uuid.UUID, actor_kind: str, permissions: set[str]) -> str:

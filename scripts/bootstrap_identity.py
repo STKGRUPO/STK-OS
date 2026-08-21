@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from stk_os.config import get_settings
 from stk_os.models import Actor, ActorRole, Organization, Role, ServiceAccount, User
-from stk_os.security import hash_secret
+from stk_os.security import hash_secret, verify_secret
 
 
 def required(name: str, minimum: int) -> str:
@@ -29,14 +30,82 @@ def attach_role(session: Session, actor: Actor, role: Role) -> None:
         session.add(ActorRole(actor_id=actor.id, role_id=role.id))
 
 
+def bootstrap_admin(
+    session: Session,
+    *,
+    organization: Organization,
+    role: Role,
+    email: str,
+    name: str,
+    password: str,
+) -> User:
+    normalized_email = email.strip().lower()
+    user = session.scalar(select(User).where(User.email.ilike(normalized_email)))
+    now = datetime.now(UTC)
+    if user is None:
+        actor = Actor(
+            organization_id=organization.id,
+            kind="user",
+            display_name=name,
+            status="active",
+        )
+        session.add(actor)
+        session.flush()
+        user = User(
+            actor_id=actor.id,
+            email=normalized_email,
+            password_hash=hash_secret(password),
+            password_set_at=now,
+        )
+        session.add(user)
+    else:
+        actor = session.get(Actor, user.actor_id)
+        if actor is None:
+            raise SystemExit("Usuário sem ator correspondente")
+        if actor.organization_id != organization.id or actor.kind != "user":
+            raise SystemExit(
+                "Usuário administrador pertence a uma identidade incompatível"
+            )
+        actor.display_name = name
+        actor.status = "active"
+        user.email = normalized_email
+        if user.password_hash is None or not verify_secret(
+            password, user.password_hash
+        ):
+            user.password_hash = hash_secret(password)
+        if user.password_set_at is None:
+            user.password_set_at = now
+    attach_role(session, actor, role)
+    return user
+
+
+def optional_service_credentials() -> tuple[str, str, str] | None:
+    names = (
+        "STK_BOOTSTRAP_SERVICE_CLIENT_ID",
+        "STK_BOOTSTRAP_SERVICE_NAME",
+        "STK_BOOTSTRAP_SERVICE_SECRET",
+    )
+    values = tuple(os.getenv(name, "") for name in names)
+    if not any(values):
+        return None
+    if not all(values):
+        raise SystemExit(
+            "Configure todas as variáveis STK_BOOTSTRAP_SERVICE_* ou nenhuma"
+        )
+    client_id, service_name, client_secret = values
+    if len(client_id) < 3 or len(service_name) < 2 or len(client_secret) < 16:
+        raise SystemExit(
+            "Variáveis STK_BOOTSTRAP_SERVICE_* não atendem aos tamanhos mínimos"
+        )
+    return client_id.lower(), service_name, client_secret
+
+
 def main() -> None:
     load_dotenv()
     admin_email = required("STK_BOOTSTRAP_ADMIN_EMAIL", 3).lower()
     admin_name = required("STK_BOOTSTRAP_ADMIN_NAME", 2)
     admin_password = required("STK_BOOTSTRAP_ADMIN_PASSWORD", 12)
-    client_id = required("STK_BOOTSTRAP_SERVICE_CLIENT_ID", 3).lower()
-    service_name = required("STK_BOOTSTRAP_SERVICE_NAME", 2)
-    client_secret = required("STK_BOOTSTRAP_SERVICE_SECRET", 16)
+    service_credentials = optional_service_credentials()
     engine = create_engine(get_settings().database_url)
     with Session(engine) as session, session.begin():
         organization = session.scalar(
@@ -56,56 +125,46 @@ def main() -> None:
                 Role.code == "integration",
             )
         )
-        if admin_role is None or integration_role is None:
-            raise SystemExit("Papéis fundacionais ausentes; execute o seed")
-
-        user = session.scalar(select(User).where(User.email == admin_email))
-        if user is None:
-            admin_actor = Actor(
-                organization_id=organization.id,
-                kind="user",
-                display_name=admin_name,
-            )
-            session.add(admin_actor)
-            session.flush()
-            user = User(
-                actor_id=admin_actor.id,
-                email=admin_email,
-                password_hash=hash_secret(admin_password),
-            )
-            session.add(user)
-        else:
-            admin_actor = session.get(Actor, user.actor_id)
-            if admin_actor is None:
-                raise SystemExit("Usuário sem ator correspondente")
-            admin_actor.display_name = admin_name
-            user.password_hash = hash_secret(admin_password)
-        attach_role(session, admin_actor, admin_role)
-
-        service = session.scalar(
-            select(ServiceAccount).where(ServiceAccount.client_id == client_id)
+        if admin_role is None:
+            raise SystemExit("Papel de administrador ausente; execute o seed")
+        bootstrap_admin(
+            session,
+            organization=organization,
+            role=admin_role,
+            email=admin_email,
+            name=admin_name,
+            password=admin_password,
         )
-        if service is None:
-            service_actor = Actor(
-                organization_id=organization.id,
-                kind="service_account",
-                display_name=service_name,
+
+        if service_credentials is not None:
+            if integration_role is None:
+                raise SystemExit("Papel de integração ausente; execute o seed")
+            client_id, service_name, client_secret = service_credentials
+            service = session.scalar(
+                select(ServiceAccount).where(ServiceAccount.client_id == client_id)
             )
-            session.add(service_actor)
-            session.flush()
-            service = ServiceAccount(
-                actor_id=service_actor.id,
-                client_id=client_id,
-                secret_hash=hash_secret(client_secret),
-            )
-            session.add(service)
-        else:
-            service_actor = session.get(Actor, service.actor_id)
-            if service_actor is None:
-                raise SystemExit("Service account sem ator correspondente")
-            service_actor.display_name = service_name
-            service.secret_hash = hash_secret(client_secret)
-        attach_role(session, service_actor, integration_role)
+            if service is None:
+                service_actor = Actor(
+                    organization_id=organization.id,
+                    kind="service_account",
+                    display_name=service_name,
+                )
+                session.add(service_actor)
+                session.flush()
+                service = ServiceAccount(
+                    actor_id=service_actor.id,
+                    client_id=client_id,
+                    secret_hash=hash_secret(client_secret),
+                )
+                session.add(service)
+            else:
+                service_actor = session.get(Actor, service.actor_id)
+                if service_actor is None:
+                    raise SystemExit("Service account sem ator correspondente")
+                service_actor.display_name = service_name
+                if not verify_secret(client_secret, service.secret_hash):
+                    service.secret_hash = hash_secret(client_secret)
+            attach_role(session, service_actor, integration_role)
     print("Identidades locais configuradas sem exibir credenciais.")
 
 

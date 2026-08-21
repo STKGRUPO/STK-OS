@@ -39,6 +39,7 @@ from stk_os.schemas import ActorContext, ServiceLogin, TokenResponse, UserLogin
 from stk_os.security import create_access_token, hash_secret, verify_secret
 
 router = APIRouter(prefix="/auth", tags=["identity"])
+INVALID_CREDENTIAL_HASH = hash_secret(secrets.token_urlsafe(32))
 
 
 def token_response(actor: Actor, permissions: frozenset[str]) -> TokenResponse:
@@ -54,11 +55,11 @@ def token_response(actor: Actor, permissions: frozenset[str]) -> TokenResponse:
 @router.post("/token", response_model=TokenResponse)
 def user_token(command: UserLogin, session: SessionDep) -> TokenResponse:
     user = session.scalar(select(User).where(func.lower(User.email) == command.email.lower()))
-    if (
-        user is None
-        or user.password_hash is None
-        or not verify_secret(command.password, user.password_hash)
-    ):
+    encoded = (
+        user.password_hash if user is not None and user.password_hash else INVALID_CREDENTIAL_HASH
+    )
+    password_is_valid = verify_secret(command.password, encoded)
+    if user is None or user.password_hash is None or not password_is_valid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credencial inválida")
     actor = session.get(Actor, user.actor_id)
     if actor is None or actor.status != "active" or actor.kind != "user":
