@@ -27,9 +27,14 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+    allow_origins=[
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "https://app.stkgrupo.com.br",
+        "https://id-preview--13ee849d-455a-4348-8505-a8804a07022a.lovable.app",
+    ],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-ID"],
 )
 app.add_middleware(CorrelationMiddleware)
