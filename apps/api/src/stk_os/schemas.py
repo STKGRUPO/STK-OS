@@ -173,3 +173,44 @@ class AuditEventResponse(BaseModel):
     before_state: dict[str, Any] | None
     after_state: dict[str, Any] | None
     occurred_at: datetime
+
+
+class FiscalConfigUpsert(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    environment: Literal["homologation", "production"]
+    emission_method: Literal["api_a1", "blocked"] = "api_a1"
+    endpoint: str = Field(min_length=12, max_length=500, pattern=r"^https://")
+    query_base_url: str = Field(min_length=12, max_length=500, pattern=r"^https://")
+    certificate_secret_ref: str = Field(min_length=2, max_length=500)
+    certificate_key_id: str = Field(min_length=2, max_length=255)
+    municipality_code: str = Field(pattern=r"^\d{7}$")
+    series: int = Field(ge=1, le=99999)
+    next_dps_number: int = Field(ge=1)
+    service_code: str = Field(min_length=1, max_length=20)
+    nbs_code: str = Field(min_length=1, max_length=20)
+    fiscal_rules: dict[str, object] = {}
+    status: Literal["active", "inactive"] = "active"
+
+
+class FiscalConfigResponse(BaseModel):
+    id: uuid.UUID
+    establishment_id: uuid.UUID
+    environment: str
+    provider: str
+    emission_method: str
+    endpoint: str
+    query_base_url: str
+    certificate_secret_ref: str
+    certificate_key_id: str
+    municipality_code: str
+    series: int
+    next_dps_number: int
+    service_code: str
+    nbs_code: str
+    fiscal_rules: dict[str, object]
+    status: str
+
+
+class FiscalConfigListResponse(BaseModel):
+    configs: list[FiscalConfigResponse]
