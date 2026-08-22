@@ -22,6 +22,7 @@ from stk_os.models import (
     LegalEntity,
     Organization,
     OutboxEvent,
+    ProductService,
 )
 from stk_os.schemas import (
     ActorContext,
@@ -37,6 +38,9 @@ from stk_os.schemas import (
     LegalEntityResponse,
     LegalEntityUpdate,
     OrganizationResponse,
+    ProductServiceListResponse,
+    ProductServiceResponse,
+    ProductServiceUpsert,
 )
 from stk_os.security import canonical_hash
 
@@ -616,6 +620,73 @@ def upsert_fiscal_config(
             "fiscal_establishment_id": str(establishment.id),
             "environment": config.environment,
         },
+    )
+    session.commit()
+    return response
+
+
+def product_service_response(item: ProductService) -> ProductServiceResponse:
+    return ProductServiceResponse(
+        id=item.id,
+        name=item.name,
+        code=getattr(item, "code", None),
+        description=getattr(item, "description", None),
+        default_amount=getattr(item, "default_amount", None),
+        service_code=getattr(item, "service_code", None),
+        nbs_code=getattr(item, "nbs_code", None),
+        business_unit_ids=[bu_id for bu_id in (getattr(item, "business_unit_ids", None) or [])],
+        status=item.status,
+    )
+
+
+@router.get("/product-services", response_model=ProductServiceListResponse)
+def list_product_services(
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:read"))],
+    business_unit_id: uuid.UUID | None = None,
+) -> ProductServiceListResponse:
+    statement = (
+        select(ProductService)
+        .where(ProductService.organization_id == actor.organization_id)
+        .order_by(ProductService.name)
+    )
+    if business_unit_id is not None:
+        statement = statement.where(ProductService.business_unit_id == business_unit_id)
+    items = session.scalars(statement).all()
+    return ProductServiceListResponse(items=[product_service_response(i) for i in items])
+
+
+@router.post("/product-services", response_model=ProductServiceResponse, status_code=201)
+def create_product_service(
+    command: ProductServiceUpsert,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> ProductServiceResponse:
+    item = ProductService(
+        organization_id=actor.organization_id,
+        name=command.name,
+        status=command.status,
+    )
+    for field in ("code", "description", "default_amount", "service_code", "nbs_code"):
+        if hasattr(item, field):
+            setattr(item, field, getattr(command, field))
+    if command.business_unit_ids and hasattr(item, "business_unit_id"):
+        item.business_unit_id = command.business_unit_ids[0]
+    session.add(item)
+    flush_or_conflict(session, "Serviço já cadastrado no catálogo")
+    response = product_service_response(item)
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="organization.product_service.created",
+        resource_type="product_service",
+        resource_id=item.id,
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        event_type="organization.product_service.created.v1",
+        event_payload={"product_service_id": str(item.id)},
     )
     session.commit()
     return response
