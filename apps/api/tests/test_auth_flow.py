@@ -65,7 +65,11 @@ def test_bootstrap_admin_and_invited_user_authenticate(
     assert invited.status_code == 201, invited.text
     defined = client.post(
         "/api/v1/auth/password/define",
-        json={"token": invited.json()["token"], "password": "another-user-password-001"},
+        json={
+            "email": "another.valid.user@example.test",
+            "token": invited.json()["token"],
+            "password": "another-user-password-001",
+        },
     )
     assert defined.status_code == 200, defined.text
 

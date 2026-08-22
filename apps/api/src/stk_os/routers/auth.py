@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import threading
+import time
 import uuid
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from stk_os.commands import record_change
 from stk_os.config import get_settings
@@ -28,6 +32,7 @@ from stk_os.models import (
     ActorRole,
     AuditEvent,
     BusinessUnit,
+    Organization,
     Permission,
     Role,
     RolePermission,
@@ -40,6 +45,34 @@ from stk_os.security import create_access_token, hash_secret, verify_secret
 
 router = APIRouter(prefix="/auth", tags=["identity"])
 INVALID_CREDENTIAL_HASH = hash_secret(secrets.token_urlsafe(32))
+
+
+class RegistrationRateLimiter:
+    def __init__(self, *, max_attempts: int = 5, window_seconds: int = 60) -> None:
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._attempts: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def check(self, request: Request) -> None:
+        key = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            attempts = self._attempts.setdefault(key, deque())
+            while attempts and attempts[0] <= cutoff:
+                attempts.popleft()
+            if len(attempts) >= self.max_attempts:
+                retry_after = max(1, round(attempts[0] + self.window_seconds - now))
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Muitas tentativas. Tente novamente mais tarde.",
+                    headers={"Retry-After": str(retry_after)},
+                )
+            attempts.append(now)
+
+
+registration_rate_limiter = RegistrationRateLimiter()
 
 
 def token_response(actor: Actor, permissions: frozenset[str]) -> TokenResponse:
@@ -366,6 +399,10 @@ def request_password_reset(
 def define_password(
     command: PasswordDefinition, request: Request, session: SessionDep
 ) -> GenericMessage:
+    if not command.token:
+        registration_rate_limiter.check(request)
+        return register_user(command, request, session)
+
     access = session.scalar(
         select(UserAccessToken).where(
             UserAccessToken.token_hash == token_digest(command.token),
@@ -377,7 +414,7 @@ def define_password(
         raise HTTPException(status_code=400, detail="Convite ou recuperação inválido ou expirado")
     user = session.get(User, access.user_id)
     actor = session.get(Actor, user.actor_id) if user else None
-    if user is None or actor is None:
+    if user is None or actor is None or user.email.lower() != command.email:
         raise HTTPException(status_code=400, detail="Convite ou recuperação inválido ou expirado")
     user.password_hash = hash_secret(command.password)
     user.password_set_at = now
@@ -399,6 +436,73 @@ def define_password(
     )
     session.commit()
     return GenericMessage(message="Senha definida com segurança. Você já pode entrar.")
+
+
+def register_user(
+    command: PasswordDefinition, request: Request, session: SessionDep
+) -> GenericMessage:
+    existing = session.scalar(select(User).where(func.lower(User.email) == command.email))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Não foi possível criar o acesso.")
+
+    organization = session.scalar(
+        select(Organization)
+        .where(Organization.status == "active")
+        .order_by(Organization.created_at, Organization.id)
+        .limit(1)
+    )
+    if organization is None:
+        raise HTTPException(status_code=503, detail="Cadastro temporariamente indisponível.")
+    role = session.scalar(
+        select(Role).where(
+            Role.organization_id == organization.id,
+            Role.code == "user",
+        )
+    )
+    if role is None:
+        raise HTTPException(status_code=503, detail="Cadastro temporariamente indisponível.")
+
+    now = datetime.now(UTC)
+    actor = Actor(
+        organization_id=organization.id,
+        kind="user",
+        display_name=command.email[:255],
+        status="active",
+    )
+    session.add(actor)
+    session.flush()
+    user = User(
+        actor_id=actor.id,
+        email=command.email,
+        password_hash=hash_secret(command.password),
+        password_set_at=now,
+    )
+    session.add(user)
+    session.flush()
+    session.add(ActorRole(actor_id=actor.id, role_id=role.id))
+    session.add(
+        AuditEvent(
+            organization_id=organization.id,
+            actor_id=actor.id,
+            correlation_id=request.state.correlation_id,
+            action="identity.user.self_registered",
+            resource_type="user",
+            resource_id=user.id,
+            before_state=None,
+            after_state={"status": "active", "first_access_completed": True},
+            event_metadata={"source": "public_api"},
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        if session.scalar(select(User).where(func.lower(User.email) == command.email)):
+            raise HTTPException(
+                status_code=409, detail="Não foi possível criar o acesso."
+            ) from error
+        raise
+    return GenericMessage(message="Acesso criado com sucesso.")
 
 
 @router.patch("/users/{user_id}/deactivate", response_model=UserSummary)

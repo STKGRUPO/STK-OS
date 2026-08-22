@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class IdentityRole(BaseModel):
@@ -56,8 +56,23 @@ class IssuedAccessLink(BaseModel):
 
 
 class PasswordDefinition(BaseModel):
-    token: str = Field(min_length=32, max_length=1024)
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=12, max_length=1024)
+    token: str | None = Field(default=None, min_length=32, max_length=1024)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("token", mode="before")
+    @classmethod
+    def empty_token_is_absent(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        return value.strip() or None
 
 
 class PasswordResetRequest(BaseModel):

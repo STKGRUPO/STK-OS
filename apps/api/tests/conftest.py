@@ -143,6 +143,7 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
         service_role = Role(
             id=uuid.uuid4(), organization_id=ORGANIZATION_ID, code="integration", name="Integration"
         )
+        user_role = Role(id=uuid.uuid4(), organization_id=ORGANIZATION_ID, code="user", name="User")
         permissions = {
             code: Permission(id=uuid.uuid4(), code=code, description=code)
             for code in (
@@ -187,6 +188,7 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
                 service_actor,
                 admin_role,
                 service_role,
+                user_role,
                 *permissions.values(),
             ]
         )

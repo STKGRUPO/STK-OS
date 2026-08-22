@@ -99,6 +99,7 @@ export default function Home() {
   const [email, setEmail] = useState("admin@stk-os.local");
   const [password, setPassword] = useState("");
   const [accessToken, setAccessToken] = useState("");
+  const [firstAccess, setFirstAccess] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [reference, setReference] = useState<Reference | null>(null);
@@ -123,6 +124,9 @@ export default function Home() {
   useEffect(() => {
     const queryToken = new URLSearchParams(window.location.search).get("access_token");
     if (queryToken) queueMicrotask(() => setAccessToken(queryToken));
+    if (window.location.pathname === "/primeiro-acesso") {
+      queueMicrotask(() => setFirstAccess(true));
+    }
     const shortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -284,7 +288,7 @@ export default function Home() {
   }
 
   if (!token) {
-    if (accessToken) return <PasswordDefinition token={accessToken} onDone={() => { setAccessToken(""); window.history.replaceState({}, "", "/"); setNotice({ kind: "success", text: "Senha definida. Entre com suas credenciais." }); }} />;
+    if (accessToken || firstAccess) return <PasswordDefinition token={accessToken} onDone={() => { setAccessToken(""); setFirstAccess(false); window.history.replaceState({}, "", "/"); setNotice({ kind: "success", text: accessToken ? "Senha definida. Entre com suas credenciais." : "Acesso criado. Entre com suas credenciais." }); }} />;
     return (
       <main className="login-shell">
         <section className="login-story">
@@ -358,13 +362,14 @@ function PasswordDefinition({ token, onDone }: { token: string; onDone: () => vo
   const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); const values = new FormData(event.currentTarget);
+    const email = String(values.get("email"));
     const password = String(values.get("password"));
     if (password !== String(values.get("confirmation"))) { setError("As senhas não coincidem."); setBusy(false); return; }
-    const response = await fetch(`${API_URL}/api/v1/auth/password/define`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) });
+    const response = await fetch(`${API_URL}/api/v1/auth/password/define`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, ...(token ? { token } : {}) }) });
     if (!response.ok) { const payload = await response.json().catch(() => null) as { detail?: string } | null; setError(payload?.detail ?? "Link inválido ou expirado"); setBusy(false); return; }
     onDone();
   }
-  return <main className="login-shell"><section className="login-story"><div className="brand-mark">STK</div><p className="overline">PRIMEIRO ACESSO · RECUPERAÇÃO</p><h1>Sua senha pertence somente a você.</h1><p>O link é temporário, de uso único e não contém uma senha criada pelo administrador.</p></section><section className="login-card"><p className="overline">DEFINIÇÃO SEGURA</p><h2>Definir minha senha</h2><form onSubmit={submit}><label>Nova senha<input name="password" type="password" minLength={12} required /></label><label>Confirmar senha<input name="confirmation" type="password" minLength={12} required /></label><button className="primary" disabled={busy} type="submit">{busy ? "Salvando…" : "Definir senha"}</button></form>{error && <p className="notice error">{error}</p>}</section></main>;
+  return <main className="login-shell"><section className="login-story"><div className="brand-mark">STK</div><p className="overline">PRIMEIRO ACESSO · RECUPERAÇÃO</p><h1>Sua senha pertence somente a você.</h1><p>{token ? "O link é temporário, de uso único e não contém uma senha criada pelo administrador." : "Crie seu acesso com seu e-mail e uma senha segura."}</p></section><section className="login-card"><p className="overline">DEFINIÇÃO SEGURA</p><h2>{token ? "Definir minha senha" : "Criar meu acesso"}</h2><form onSubmit={submit}><label>E-mail<input name="email" type="email" required /></label><label>Nova senha<input name="password" type="password" minLength={12} required /></label><label>Confirmar senha<input name="confirmation" type="password" minLength={12} required /></label><button className="primary" disabled={busy} type="submit">{busy ? "Salvando…" : token ? "Definir senha" : "Criar acesso"}</button></form>{error && <p className="notice error">{error}</p>}</section></main>;
 }
 
 function RecoveryRequest({ email, onEmail, onNotice }: { email: string; onEmail: (value: string) => void; onNotice: (notice: Notice) => void }) {
