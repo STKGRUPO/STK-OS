@@ -73,6 +73,8 @@ class RegistrationRateLimiter:
 
 
 registration_rate_limiter = RegistrationRateLimiter()
+DEFAULT_ORGANIZATION_CODE = "grupo-stk"
+DEFAULT_ORGANIZATION_NAME = "Grupo STK"
 
 
 def token_response(actor: Actor, permissions: frozenset[str]) -> TokenResponse:
@@ -445,22 +447,7 @@ def register_user(
     if existing is not None:
         raise HTTPException(status_code=409, detail="Não foi possível criar o acesso.")
 
-    organization = session.scalar(
-        select(Organization)
-        .where(Organization.status == "active")
-        .order_by(Organization.created_at, Organization.id)
-        .limit(1)
-    )
-    if organization is None:
-        raise HTTPException(status_code=503, detail="Cadastro temporariamente indisponível.")
-    role = session.scalar(
-        select(Role).where(
-            Role.organization_id == organization.id,
-            Role.code == "user",
-        )
-    )
-    if role is None:
-        raise HTTPException(status_code=503, detail="Cadastro temporariamente indisponível.")
+    organization, role = ensure_registration_context(session)
 
     now = datetime.now(UTC)
     actor = Actor(
@@ -503,6 +490,44 @@ def register_user(
             ) from error
         raise
     return GenericMessage(message="Acesso criado com sucesso.")
+
+
+def ensure_registration_context(session: SessionDep) -> tuple[Organization, Role]:
+    organization = session.scalar(
+        select(Organization)
+        .where(Organization.status == "active")
+        .order_by(Organization.created_at, Organization.id)
+        .limit(1)
+    )
+    if organization is None:
+        organization = session.scalar(
+            select(Organization).where(Organization.code == DEFAULT_ORGANIZATION_CODE)
+        )
+        if organization is not None:
+            raise HTTPException(status_code=503, detail="Cadastro temporariamente indisponível.")
+        organization = Organization(
+            code=DEFAULT_ORGANIZATION_CODE,
+            name=DEFAULT_ORGANIZATION_NAME,
+            status="active",
+        )
+        session.add(organization)
+        session.flush()
+
+    role = session.scalar(
+        select(Role).where(
+            Role.organization_id == organization.id,
+            Role.code == "user",
+        )
+    )
+    if role is None:
+        role = Role(
+            organization_id=organization.id,
+            code="user",
+            name="Usuário padrão",
+        )
+        session.add(role)
+        session.flush()
+    return organization, role
 
 
 @router.patch("/users/{user_id}/deactivate", response_model=UserSummary)

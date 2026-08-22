@@ -1,6 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
+from sqlalchemy.orm import Session, sessionmaker
 
+from stk_os.models import Organization, Role
 from stk_os.routers.auth import registration_rate_limiter
 
 
@@ -147,6 +150,38 @@ def test_public_self_registration_login_and_me(client: TestClient) -> None:
     assert me.status_code == 200, me.text
     assert me.json()["status"] == "active"
     assert me.json()["first_access_completed"] is True
+    assert [role["code"] for role in me.json()["roles"]] == ["user"]
+
+
+def test_public_registration_repairs_missing_context(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session, session.begin():
+        session.execute(delete(Role))
+        session.execute(delete(Organization))
+
+    created = client.post(
+        "/api/v1/auth/password/define",
+        json={
+            "email": "empty.database@example.test",
+            "password": "empty-database-password-001",
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    login = client.post(
+        "/api/v1/auth/token",
+        json={
+            "email": "empty.database@example.test",
+            "password": "empty-database-password-001",
+        },
+    )
+    assert login.status_code == 200, login.text
+    me = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+    )
+    assert me.status_code == 200, me.text
     assert [role["code"] for role in me.json()["roles"]] == ["user"]
 
 
