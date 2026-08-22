@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TokenResponse(BaseModel):
@@ -45,11 +45,67 @@ class BusinessUnitResponse(BaseModel):
     primary_establishment_id: uuid.UUID
 
 
+def normalize_tax_id(value: object) -> object:
+    if value is None or not isinstance(value, str):
+        return value
+    digits = "".join(character for character in value if character.isdigit())
+    return digits or None
+
+
+class LegalEntityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    registered_name: str = Field(min_length=2, max_length=255)
+    trade_name: str | None = Field(default=None, max_length=255)
+    tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    status: Literal["active", "inactive"] = "active"
+    code: str | None = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
+
+    _normalize_tax_id = field_validator("tax_id", mode="before")(normalize_tax_id)
+
+
+class LegalEntityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    registered_name: str = Field(min_length=2, max_length=255)
+    trade_name: str | None = Field(default=None, max_length=255)
+    tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    status: Literal["active", "inactive"]
+
+    _normalize_tax_id = field_validator("tax_id", mode="before")(normalize_tax_id)
+
+
+class FiscalEstablishmentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=255)
+    tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    kind: Literal["headquarters", "branch"]
+    status: Literal["active", "inactive"] = "active"
+    business_unit_ids: list[uuid.UUID] = []
+    code: str | None = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
+
+    _normalize_tax_id = field_validator("tax_id", mode="before")(normalize_tax_id)
+
+
+class FiscalEstablishmentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=255)
+    tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    kind: Literal["headquarters", "branch"]
+    status: Literal["active", "inactive"]
+    business_unit_ids: list[uuid.UUID] = []
+
+    _normalize_tax_id = field_validator("tax_id", mode="before")(normalize_tax_id)
+
+
 class FiscalEstablishmentResponse(BaseModel):
     id: uuid.UUID
     code: str
     name: str
     kind: str
+    tax_id: str | None
     status: str
     legal_entity_id: uuid.UUID
     business_units: list[BusinessUnitResponse]
@@ -60,6 +116,7 @@ class LegalEntityResponse(BaseModel):
     code: str
     registered_name: str
     trade_name: str | None
+    tax_id: str | None
     status: str
     establishments: list[FiscalEstablishmentResponse]
 

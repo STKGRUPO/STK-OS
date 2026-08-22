@@ -6,6 +6,7 @@ import ContractsWorkspace from "./contracts-workspace";
 import BillingWorkspace from "./billing-workspace";
 import ClientServicesPanel from "./client-services-panel";
 import IdentityWorkspace from "./identity-workspace";
+import OrganizationWorkspace from "./organization-workspace";
 import TasksWorkspace from "./tasks-workspace";
 
 const API_URL = process.env.NEXT_PUBLIC_STK_API_URL ?? "http://127.0.0.1:8000";
@@ -115,7 +116,7 @@ export default function Home() {
   const [notice, setNotice] = useState<Notice>(null);
   const [loading, setLoading] = useState(false);
   const [now] = useState(() => Date.now());
-  const [workspace, setWorkspace] = useState<"crm" | "contracts" | "billing" | "tasks" | "users">("crm");
+  const [workspace, setWorkspace] = useState<"crm" | "contracts" | "billing" | "tasks" | "users" | "group-companies">("crm");
   const searchRef = useRef<HTMLInputElement>(null);
   const showNotice = useCallback((kind: "success" | "error", text: string) => {
     setNotice({ kind, text });
@@ -325,12 +326,14 @@ export default function Home() {
           <button className={`nav-item ${workspace === "contracts" ? "active" : ""}`} type="button" onClick={() => setWorkspace("contracts")}><span>▤</span>Contratos</button>
           <button className={`nav-item ${workspace === "billing" ? "active" : ""}`} type="button" onClick={() => setWorkspace("billing")}><span>▦</span>Faturar</button>
           <button className={`nav-item ${workspace === "tasks" ? "active" : ""}`} type="button" onClick={() => setWorkspace("tasks")}><span>✓</span>Tarefas</button>
+          {(profile?.capabilities.includes("identity:manage") || profile?.capabilities.includes("organization:read")) && <span className="nav-section-label">Administração</span>}
           {profile?.capabilities.includes("identity:manage") && <button className={`nav-item ${workspace === "users" ? "active" : ""}`} type="button" onClick={() => setWorkspace("users")}><span>○</span>Usuários</button>}
+          {profile?.capabilities.includes("organization:read") && <button className={`nav-item ${workspace === "group-companies" ? "active" : ""}`} type="button" onClick={() => setWorkspace("group-companies")}><span>◇</span>Empresas do Grupo</button>}
         </nav>
         <div className="sidebar-principle"><span>PRINCÍPIO</span><p>O sistema sabe tudo.<br />A tela mostra só o que importa agora.</p></div>
         <div className="sidebar-footer"><strong>{profile?.display_name}</strong><span>{profile?.email}</span><button type="button" onClick={() => { setToken(""); setProfile(null); }}>Sair</button></div>
       </aside>
-      {workspace === "contracts" ? <ContractsWorkspace apiUrl={API_URL} token={token} onNotice={showNotice} /> : workspace === "billing" ? <BillingWorkspace apiUrl={API_URL} token={token} onNotice={showNotice} /> : workspace === "tasks" ? <TasksWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} activeUnitId={pipeline?.business_unit_id ?? ""} onNotice={showNotice} /> : workspace === "users" ? <IdentityWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} onNotice={showNotice} /> : <section className="workspace">
+      {workspace === "contracts" ? <ContractsWorkspace apiUrl={API_URL} token={token} onNotice={showNotice} /> : workspace === "billing" ? <BillingWorkspace apiUrl={API_URL} token={token} onNotice={showNotice} /> : workspace === "tasks" ? <TasksWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} activeUnitId={pipeline?.business_unit_id ?? ""} onNotice={showNotice} /> : workspace === "users" ? <IdentityWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} onNotice={showNotice} /> : workspace === "group-companies" ? <OrganizationWorkspace apiUrl={API_URL} token={token} units={reference?.business_units ?? []} canWrite={profile?.capabilities.includes("organization:write") ?? false} onNotice={showNotice} /> : <section className="workspace">
         <header className="topbar">
           <div><p className="overline">CRM · GRUPO STK</p><h1>{unit?.name ?? "Pipeline comercial"}</h1></div>
           <form className="search" onSubmit={runSearch}><span>⌕</span><input ref={searchRef} aria-label="Busca global" placeholder="Buscar pessoa, empresa, contato ou negócio" value={search} onChange={(event) => setSearch(event.target.value)} /><kbd>Ctrl K</kbd><button type="submit">Buscar</button></form>

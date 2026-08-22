@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from stk_os.commands import record_change
@@ -24,6 +24,7 @@ from stk_os.identity_schemas import (
     IssuedAccessLink,
     PasswordDefinition,
     PasswordResetRequest,
+    UserAccessUpdate,
     UserInvite,
     UserSummary,
 )
@@ -75,6 +76,7 @@ class RegistrationRateLimiter:
 registration_rate_limiter = RegistrationRateLimiter()
 DEFAULT_ORGANIZATION_CODE = "grupo-stk"
 DEFAULT_ORGANIZATION_NAME = "Grupo STK"
+GROUP_ADMIN_ROLE_CODE = "administrator"
 
 
 def token_response(actor: Actor, permissions: frozenset[str]) -> TokenResponse:
@@ -158,6 +160,102 @@ def user_summary(session: SessionDep, user: User) -> UserSummary:
             key=str,
         ),
     )
+
+
+def access_assignment(
+    session: SessionDep,
+    *,
+    organization_id: uuid.UUID,
+    role_id: uuid.UUID,
+    business_unit_ids: list[uuid.UUID],
+) -> tuple[Role, list[uuid.UUID | None]]:
+    role = session.scalar(
+        select(Role).where(Role.id == role_id, Role.organization_id == organization_id)
+    )
+    if role is None:
+        raise HTTPException(status_code=422, detail="Perfil inválido")
+    unique_unit_ids = list(dict.fromkeys(business_unit_ids))
+    if role.code == GROUP_ADMIN_ROLE_CODE:
+        if unique_unit_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Administrador do Grupo deve possuir acesso a todas as unidades",
+            )
+        return role, [None]
+    if not unique_unit_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Este perfil exige ao menos uma unidade atribuída",
+        )
+    count = session.scalar(
+        select(func.count())
+        .select_from(BusinessUnit)
+        .where(
+            BusinessUnit.organization_id == organization_id,
+            BusinessUnit.id.in_(unique_unit_ids),
+        )
+    )
+    if count != len(unique_unit_ids):
+        raise HTTPException(status_code=422, detail="Unidade inválida")
+    return role, list(unique_unit_ids)
+
+
+def actor_has_group_admin_role(session: SessionDep, actor_id: uuid.UUID) -> bool:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(ActorRole)
+            .join(Role, Role.id == ActorRole.role_id)
+            .where(
+                ActorRole.actor_id == actor_id,
+                Role.code == GROUP_ADMIN_ROLE_CODE,
+            )
+        )
+        or 0
+    ) > 0
+
+
+def active_group_admin_count(session: SessionDep, organization_id: uuid.UUID) -> int:
+    # Serialize access changes that could otherwise demote two administrators concurrently.
+    session.scalars(
+        select(Actor.id)
+        .where(
+            Actor.organization_id == organization_id,
+            Actor.kind == "user",
+            Actor.status == "active",
+        )
+        .with_for_update()
+    ).all()
+    return int(
+        session.scalar(
+            select(func.count(func.distinct(Actor.id)))
+            .select_from(Actor)
+            .join(ActorRole, ActorRole.actor_id == Actor.id)
+            .join(Role, Role.id == ActorRole.role_id)
+            .where(
+                Actor.organization_id == organization_id,
+                Actor.status == "active",
+                Role.code == GROUP_ADMIN_ROLE_CODE,
+            )
+        )
+        or 0
+    )
+
+
+def protect_last_active_group_admin(
+    session: SessionDep, *, organization_id: uuid.UUID, target: Actor
+) -> None:
+    if (
+        target.status == "active"
+        and actor_has_group_admin_role(session, target.id)
+        and active_group_admin_count(session, organization_id) <= 1
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "O último Administrador do Grupo ativo não pode perder o perfil ou ser desativado"
+            ),
+        )
 
 
 def issue_user_token(
@@ -253,24 +351,12 @@ def invite_user(
 ) -> IssuedAccessLink:
     if session.scalar(select(User).where(func.lower(User.email) == command.email.lower())):
         raise HTTPException(status_code=409, detail="E-mail já cadastrado")
-    role = session.scalar(
-        select(Role).where(
-            Role.id == command.role_id, Role.organization_id == actor.organization_id
-        )
+    role, units = access_assignment(
+        session,
+        organization_id=actor.organization_id,
+        role_id=command.role_id,
+        business_unit_ids=command.business_unit_ids,
     )
-    if role is None:
-        raise HTTPException(status_code=422, detail="Função inválida")
-    if command.business_unit_ids:
-        count = session.scalar(
-            select(func.count())
-            .select_from(BusinessUnit)
-            .where(
-                BusinessUnit.organization_id == actor.organization_id,
-                BusinessUnit.id.in_(command.business_unit_ids),
-            )
-        )
-        if count != len(set(command.business_unit_ids)):
-            raise HTTPException(status_code=422, detail="Unidade inválida")
     invited_actor = Actor(
         organization_id=actor.organization_id,
         kind="user",
@@ -282,7 +368,6 @@ def invite_user(
     user = User(actor_id=invited_actor.id, email=command.email.lower(), password_hash=None)
     session.add(user)
     session.flush()
-    units: list[uuid.UUID | None] = command.business_unit_ids or [None]
     session.add_all(
         [
             ActorRole(actor_id=invited_actor.id, role_id=role.id, business_unit_id=unit)
@@ -315,6 +400,64 @@ def invite_user(
         token=raw,
         expires_at=aware(access.expires_at),
     )
+
+
+@router.patch("/users/{user_id}/access", response_model=UserSummary)
+def update_user_access(
+    user_id: uuid.UUID,
+    command: UserAccessUpdate,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("identity:manage"))],
+) -> UserSummary:
+    user = session.scalar(
+        select(User)
+        .join(Actor, Actor.id == User.actor_id)
+        .where(User.id == user_id, Actor.organization_id == actor.organization_id)
+    )
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target = session.get(Actor, user.actor_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Identidade do usuário não encontrada")
+    role, units = access_assignment(
+        session,
+        organization_id=actor.organization_id,
+        role_id=command.role_id,
+        business_unit_ids=command.business_unit_ids,
+    )
+    before = user_summary(session, user).model_dump(mode="json")
+    if role.code != GROUP_ADMIN_ROLE_CODE:
+        protect_last_active_group_admin(
+            session, organization_id=actor.organization_id, target=target
+        )
+    session.execute(delete(ActorRole).where(ActorRole.actor_id == user.actor_id))
+    session.add_all(
+        [
+            ActorRole(actor_id=user.actor_id, role_id=role.id, business_unit_id=unit)
+            for unit in units
+        ]
+    )
+    session.flush()
+    after = user_summary(session, user).model_dump(mode="json")
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="identity.user.access_updated",
+        resource_type="user",
+        resource_id=user.id,
+        before_state=before,
+        after_state=after,
+        event_type="identity.user.access_updated.v1",
+        event_payload={
+            "user_id": str(user.id),
+            "role_id": str(role.id),
+            "business_unit_ids": [str(unit) for unit in units if unit is not None],
+        },
+    )
+    session.commit()
+    return user_summary(session, user)
 
 
 @router.post("/users/{user_id}/password-reset", response_model=IssuedAccessLink)
@@ -546,6 +689,9 @@ def deactivate_user(
     if user.actor_id == actor.id:
         raise HTTPException(status_code=409, detail="O usuário não pode desativar a própria conta")
     target = session.get(Actor, user.actor_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Identidade do usuário não encontrada")
+    protect_last_active_group_admin(session, organization_id=actor.organization_id, target=target)
     before = target.status
     target.status = "disabled"
     session.add(

@@ -35,8 +35,11 @@ ON CONFLICT (code) DO NOTHING;
 
 INSERT INTO roles (id, organization_id, code, name)
 VALUES
-    ('50000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'administrator', 'Administrador total'),
-    ('50000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'integration', 'Integração mínima')
+    ('50000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'administrator', 'Administrador do Grupo'),
+    ('50000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'integration', 'Integração mínima'),
+    ('50000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'unit_manager', 'Gestor de Unidade'),
+    ('50000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001', 'operational', 'Operacional'),
+    ('50000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001', 'financial', 'Financeiro')
 ON CONFLICT (organization_id, code) DO NOTHING;
 
 INSERT INTO role_permissions (role_id, permission_id)
@@ -49,3 +52,33 @@ FROM permissions
 WHERE code IN ('organization:read', 'events:ingest', 'exceptions:write')
 ON CONFLICT DO NOTHING;
 
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000003', id
+FROM permissions
+WHERE code IN (
+    'organization:read', 'audit:read', 'crm:read', 'crm:write', 'crm:import',
+    'contracts:read', 'contracts:create', 'contracts:update', 'contracts:version',
+    'contracts:suspend', 'contracts:resume', 'contracts:terminate',
+    'billing:read', 'billing:generate', 'billing:review', 'billing:reprocess',
+    'services:read', 'services:write', 'fiscal:read', 'fiscal:issue', 'fiscal:reconcile'
+)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000004', id
+FROM permissions
+WHERE code IN (
+    'organization:read', 'crm:read', 'crm:write', 'contracts:read',
+    'services:read', 'services:write'
+)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT '50000000-0000-4000-8000-000000000005', id
+FROM permissions
+WHERE code IN (
+    'organization:read', 'crm:read', 'contracts:read', 'billing:read',
+    'billing:generate', 'billing:review', 'billing:reprocess',
+    'fiscal:read', 'fiscal:issue', 'fiscal:reconcile'
+)
+ON CONFLICT DO NOTHING;

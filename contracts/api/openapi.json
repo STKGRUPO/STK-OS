@@ -229,6 +229,64 @@
         ]
       }
     },
+    "/api/v1/auth/users/{user_id}/access": {
+      "patch": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Update User Access",
+        "operationId": "update_user_access_api_v1_auth_users__user_id__access_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserAccessUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/users/{user_id}/password-reset": {
       "post": {
         "tags": [
@@ -472,6 +530,226 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/organization/legal-entities": {
+      "post": {
+        "tags": [
+          "organization"
+        ],
+        "summary": "Create Legal Entity",
+        "operationId": "create_legal_entity_api_v1_organization_legal_entities_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalEntityCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalEntityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/organization/legal-entities/{entity_id}": {
+      "patch": {
+        "tags": [
+          "organization"
+        ],
+        "summary": "Update Legal Entity",
+        "operationId": "update_legal_entity_api_v1_organization_legal_entities__entity_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entity Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalEntityUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegalEntityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organization/legal-entities/{entity_id}/fiscal-establishments": {
+      "post": {
+        "tags": [
+          "organization"
+        ],
+        "summary": "Create Fiscal Establishment",
+        "operationId": "create_fiscal_establishment_api_v1_organization_legal_entities__entity_id__fiscal_establishments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entity Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FiscalEstablishmentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiscalEstablishmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/organization/fiscal-establishments/{establishment_id}": {
+      "patch": {
+        "tags": [
+          "organization"
+        ],
+        "summary": "Update Fiscal Establishment",
+        "operationId": "update_fiscal_establishment_api_v1_organization_fiscal_establishments__establishment_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "establishment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Establishment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FiscalEstablishmentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FiscalEstablishmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/organization/business-units/{unit_id}": {
@@ -7943,6 +8221,76 @@
         ],
         "title": "FiscalDocumentResponse"
       },
+      "FiscalEstablishmentCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "headquarters",
+              "branch"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status",
+            "default": "active"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids",
+            "default": []
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 2,
+                "pattern": "^[a-z0-9-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "FiscalEstablishmentCreate"
+      },
       "FiscalEstablishmentResponse": {
         "properties": {
           "id": {
@@ -7961,6 +8309,17 @@
           "kind": {
             "type": "string",
             "title": "Kind"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
           },
           "status": {
             "type": "string",
@@ -7985,11 +8344,68 @@
           "code",
           "name",
           "kind",
+          "tax_id",
           "status",
           "legal_entity_id",
           "business_units"
         ],
         "title": "FiscalEstablishmentResponse"
+      },
+      "FiscalEstablishmentUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "headquarters",
+              "branch"
+            ],
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "status"
+        ],
+        "title": "FiscalEstablishmentUpdate"
       },
       "FiscalIssuanceResponse": {
         "properties": {
@@ -8597,6 +9013,70 @@
         ],
         "title": "KanbanResponse"
       },
+      "LegalEntityCreate": {
+        "properties": {
+          "registered_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Registered Name"
+          },
+          "trade_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status",
+            "default": "active"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 2,
+                "pattern": "^[a-z0-9-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "registered_name"
+        ],
+        "title": "LegalEntityCreate"
+      },
       "LegalEntityResponse": {
         "properties": {
           "id": {
@@ -8623,6 +9103,17 @@
             ],
             "title": "Trade Name"
           },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -8641,10 +9132,61 @@
           "code",
           "registered_name",
           "trade_name",
+          "tax_id",
           "status",
           "establishments"
         ],
         "title": "LegalEntityResponse"
+      },
+      "LegalEntityUpdate": {
+        "properties": {
+          "registered_name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Registered Name"
+          },
+          "trade_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Name"
+          },
+          "tax_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 14,
+                "minLength": 14
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tax Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "registered_name",
+          "status"
+        ],
+        "title": "LegalEntityUpdate"
       },
       "OccurrenceGenerate": {
         "properties": {
@@ -9268,22 +9810,36 @@
       },
       "PasswordDefinition": {
         "properties": {
-          "token": {
+          "email": {
             "type": "string",
-            "maxLength": 1024,
-            "minLength": 32,
-            "title": "Token"
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email"
           },
           "password": {
             "type": "string",
             "maxLength": 1024,
             "minLength": 12,
             "title": "Password"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024,
+                "minLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "token",
+          "email",
           "password"
         ],
         "title": "PasswordDefinition"
@@ -10083,6 +10639,30 @@
           "expires_in"
         ],
         "title": "TokenResponse"
+      },
+      "UserAccessUpdate": {
+        "properties": {
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "business_unit_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Business Unit Ids",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role_id"
+        ],
+        "title": "UserAccessUpdate"
       },
       "UserInvite": {
         "properties": {

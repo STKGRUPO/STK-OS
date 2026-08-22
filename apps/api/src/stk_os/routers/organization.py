@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
+from stk_os.commands import record_change
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
 from stk_os.models import (
@@ -22,13 +26,166 @@ from stk_os.schemas import (
     ActorContext,
     BusinessUnitResponse,
     BusinessUnitUpdate,
+    FiscalEstablishmentCreate,
     FiscalEstablishmentResponse,
+    FiscalEstablishmentUpdate,
+    LegalEntityCreate,
     LegalEntityResponse,
+    LegalEntityUpdate,
     OrganizationResponse,
 )
 from stk_os.security import canonical_hash
 
 router = APIRouter(prefix="/organization", tags=["organization"])
+
+
+def code_base(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", normalized.lower()).strip("-")[:90] or "cadastro"
+
+
+def available_entity_code(session: SessionDep, organization_id: uuid.UUID, preferred: str) -> str:
+    base = code_base(preferred)
+    candidate = base
+    suffix = 2
+    while session.scalar(
+        select(LegalEntity.id).where(
+            LegalEntity.organization_id == organization_id, LegalEntity.code == candidate
+        )
+    ):
+        candidate = f"{base[: 90 - len(str(suffix))]}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def available_establishment_code(
+    session: SessionDep, legal_entity_id: uuid.UUID, preferred: str
+) -> str:
+    base = code_base(preferred)
+    candidate = base
+    suffix = 2
+    while session.scalar(
+        select(FiscalEstablishment.id).where(
+            FiscalEstablishment.legal_entity_id == legal_entity_id,
+            FiscalEstablishment.code == candidate,
+        )
+    ):
+        candidate = f"{base[: 90 - len(str(suffix))]}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def flush_or_conflict(session: SessionDep, detail: str) -> None:
+    try:
+        session.flush()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=detail) from error
+
+
+def establishment_response(
+    session: SessionDep, establishment: FiscalEstablishment
+) -> FiscalEstablishmentResponse:
+    units = session.scalars(
+        select(BusinessUnit)
+        .where(BusinessUnit.primary_establishment_id == establishment.id)
+        .order_by(BusinessUnit.name)
+    ).all()
+    return FiscalEstablishmentResponse(
+        id=establishment.id,
+        code=establishment.code,
+        name=establishment.name,
+        kind=establishment.kind,
+        tax_id=establishment.tax_id,
+        status=establishment.status,
+        legal_entity_id=establishment.legal_entity_id,
+        business_units=[BusinessUnitResponse.model_validate(unit) for unit in units],
+    )
+
+
+def legal_entity_response(session: SessionDep, entity: LegalEntity) -> LegalEntityResponse:
+    establishments = session.scalars(
+        select(FiscalEstablishment)
+        .where(FiscalEstablishment.legal_entity_id == entity.id)
+        .order_by(FiscalEstablishment.code)
+    ).all()
+    return LegalEntityResponse(
+        id=entity.id,
+        code=entity.code,
+        registered_name=entity.registered_name,
+        trade_name=entity.trade_name,
+        tax_id=entity.tax_id,
+        status=entity.status,
+        establishments=[establishment_response(session, item) for item in establishments],
+    )
+
+
+def scoped_legal_entity(
+    session: SessionDep, entity_id: uuid.UUID, organization_id: uuid.UUID
+) -> LegalEntity:
+    entity = session.scalar(
+        select(LegalEntity).where(
+            LegalEntity.id == entity_id, LegalEntity.organization_id == organization_id
+        )
+    )
+    if entity is None:
+        raise HTTPException(status_code=404, detail="Empresa do Grupo não encontrada")
+    return entity
+
+
+def scoped_establishment(
+    session: SessionDep, establishment_id: uuid.UUID, organization_id: uuid.UUID
+) -> FiscalEstablishment:
+    establishment = session.scalar(
+        select(FiscalEstablishment)
+        .join(LegalEntity, LegalEntity.id == FiscalEstablishment.legal_entity_id)
+        .where(
+            FiscalEstablishment.id == establishment_id,
+            LegalEntity.organization_id == organization_id,
+        )
+    )
+    if establishment is None:
+        raise HTTPException(status_code=404, detail="Estabelecimento fiscal não encontrado")
+    return establishment
+
+
+def link_business_units(
+    session: SessionDep,
+    *,
+    establishment: FiscalEstablishment,
+    organization_id: uuid.UUID,
+    business_unit_ids: list[uuid.UUID],
+    allow_existing_removal: bool,
+) -> None:
+    unique_ids = list(dict.fromkeys(business_unit_ids))
+    if not allow_existing_removal:
+        current_ids = set(
+            session.scalars(
+                select(BusinessUnit.id).where(
+                    BusinessUnit.primary_establishment_id == establishment.id
+                )
+            ).all()
+        )
+        if not current_ids.issubset(unique_ids):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Uma unidade não pode ficar sem estabelecimento fiscal. "
+                    "Vincule-a primeiro ao estabelecimento de destino."
+                ),
+            )
+    if not unique_ids:
+        return
+    units = session.scalars(
+        select(BusinessUnit).where(
+            BusinessUnit.organization_id == organization_id,
+            BusinessUnit.id.in_(unique_ids),
+        )
+    ).all()
+    if len(units) != len(unique_ids):
+        raise HTTPException(status_code=422, detail="Unidade de negócio inválida")
+    for unit in units:
+        unit.primary_establishment_id = establishment.id
 
 
 @router.get("", response_model=OrganizationResponse)
@@ -68,6 +225,7 @@ def get_organization(
                 code=establishment.code,
                 name=establishment.name,
                 kind=establishment.kind,
+                tax_id=establishment.tax_id,
                 status=establishment.status,
                 legal_entity_id=establishment.legal_entity_id,
                 business_units=units_by_establishment.get(establishment.id, []),
@@ -84,12 +242,195 @@ def get_organization(
                 code=entity.code,
                 registered_name=entity.registered_name,
                 trade_name=entity.trade_name,
+                tax_id=entity.tax_id,
                 status=entity.status,
                 establishments=establishments_by_entity.get(entity.id, []),
             )
             for entity in entities
         ],
     )
+
+
+@router.post("/legal-entities", response_model=LegalEntityResponse, status_code=201)
+def create_legal_entity(
+    command: LegalEntityCreate,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> LegalEntityResponse:
+    entity = LegalEntity(
+        organization_id=actor.organization_id,
+        code=available_entity_code(
+            session,
+            actor.organization_id,
+            command.code or command.trade_name or command.registered_name,
+        ),
+        registered_name=command.registered_name,
+        trade_name=command.trade_name,
+        tax_id=command.tax_id,
+        status=command.status,
+    )
+    session.add(entity)
+    flush_or_conflict(session, "CNPJ ou código já cadastrado")
+    response = legal_entity_response(session, entity)
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="organization.legal_entity.created",
+        resource_type="legal_entity",
+        resource_id=entity.id,
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        event_type="organization.legal_entity.created.v1",
+        event_payload={"legal_entity_id": str(entity.id)},
+    )
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="CNPJ ou código já cadastrado") from error
+    return response
+
+
+@router.patch("/legal-entities/{entity_id}", response_model=LegalEntityResponse)
+def update_legal_entity(
+    entity_id: uuid.UUID,
+    command: LegalEntityUpdate,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> LegalEntityResponse:
+    entity = scoped_legal_entity(session, entity_id, actor.organization_id)
+    before = legal_entity_response(session, entity).model_dump(mode="json")
+    entity.registered_name = command.registered_name
+    entity.trade_name = command.trade_name
+    entity.tax_id = command.tax_id
+    entity.status = command.status
+    flush_or_conflict(session, "CNPJ já cadastrado")
+    response = legal_entity_response(session, entity)
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="organization.legal_entity.updated",
+        resource_type="legal_entity",
+        resource_id=entity.id,
+        before_state=before,
+        after_state=response.model_dump(mode="json"),
+        event_type="organization.legal_entity.updated.v1",
+        event_payload={"legal_entity_id": str(entity.id)},
+    )
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="CNPJ já cadastrado") from error
+    return response
+
+
+@router.post(
+    "/legal-entities/{entity_id}/fiscal-establishments",
+    response_model=FiscalEstablishmentResponse,
+    status_code=201,
+)
+def create_fiscal_establishment(
+    entity_id: uuid.UUID,
+    command: FiscalEstablishmentCreate,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> FiscalEstablishmentResponse:
+    entity = scoped_legal_entity(session, entity_id, actor.organization_id)
+    establishment = FiscalEstablishment(
+        legal_entity_id=entity.id,
+        code=available_establishment_code(session, entity.id, command.code or command.name),
+        name=command.name,
+        kind=command.kind,
+        tax_id=command.tax_id,
+        status=command.status,
+    )
+    session.add(establishment)
+    flush_or_conflict(session, "CNPJ ou código já cadastrado")
+    link_business_units(
+        session,
+        establishment=establishment,
+        organization_id=actor.organization_id,
+        business_unit_ids=command.business_unit_ids,
+        allow_existing_removal=True,
+    )
+    flush_or_conflict(session, "Não foi possível vincular as unidades")
+    response = establishment_response(session, establishment)
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="organization.fiscal_establishment.created",
+        resource_type="fiscal_establishment",
+        resource_id=establishment.id,
+        before_state=None,
+        after_state=response.model_dump(mode="json"),
+        event_type="organization.fiscal_establishment.created.v1",
+        event_payload={
+            "fiscal_establishment_id": str(establishment.id),
+            "legal_entity_id": str(entity.id),
+        },
+    )
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="CNPJ ou código já cadastrado") from error
+    return response
+
+
+@router.patch(
+    "/fiscal-establishments/{establishment_id}",
+    response_model=FiscalEstablishmentResponse,
+)
+def update_fiscal_establishment(
+    establishment_id: uuid.UUID,
+    command: FiscalEstablishmentUpdate,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> FiscalEstablishmentResponse:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    before = establishment_response(session, establishment).model_dump(mode="json")
+    establishment.name = command.name
+    establishment.kind = command.kind
+    establishment.tax_id = command.tax_id
+    establishment.status = command.status
+    link_business_units(
+        session,
+        establishment=establishment,
+        organization_id=actor.organization_id,
+        business_unit_ids=command.business_unit_ids,
+        allow_existing_removal=False,
+    )
+    flush_or_conflict(session, "CNPJ já cadastrado")
+    response = establishment_response(session, establishment)
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="organization.fiscal_establishment.updated",
+        resource_type="fiscal_establishment",
+        resource_id=establishment.id,
+        before_state=before,
+        after_state=response.model_dump(mode="json"),
+        event_type="organization.fiscal_establishment.updated.v1",
+        event_payload={
+            "fiscal_establishment_id": str(establishment.id),
+            "legal_entity_id": str(establishment.legal_entity_id),
+        },
+    )
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail="CNPJ já cadastrado") from error
+    return response
 
 
 @router.patch("/business-units/{unit_id}", response_model=BusinessUnitResponse)

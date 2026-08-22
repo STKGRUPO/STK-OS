@@ -36,6 +36,13 @@ class UserInvite(BaseModel):
     business_unit_ids: list[uuid.UUID] = []
 
 
+class UserAccessUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role_id: uuid.UUID
+    business_unit_ids: list[uuid.UUID] = []
+
+
 class UserSummary(BaseModel):
     id: uuid.UUID
     actor_id: uuid.UUID
