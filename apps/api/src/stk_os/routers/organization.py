@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Forms, Header, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -690,3 +690,93 @@ def create_product_service(
     )
     session.commit()
     return response
+
+@router.get(
+    "/fiscal-establishments/{establishment_id}/certificates",
+    response_model=schemas.EstablishmentCertificateListOut,
+)
+async def list_establishment_certificates(
+    establishment_id: uuid.UUID,
+    actor: Actor = Depends(require_permissions("fiscal:read")),
+    session: AsyncSession = Depends(get_session),
+) -> schemas.EstablishmentCertificateListOut:
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT id, establishment_id, alias, certificate_secret_ref,
+                       certificate_key_id, subject_name, not_valid_before,
+                       not_valid_after, is_active, created_at
+                  FROM fiscal_certificates
+                 WHERE establishment_id = :eid AND organization_id = :org
+                 ORDER BY created_at DESC
+                """
+            ),
+            {"eid": establishment_id, "org": actor.organization_id},
+        )
+    ).mappings().all()
+    return schemas.EstablishmentCertificateListOut(
+        certificates=[schemas.EstablishmentCertificateOut(**dict(r)) for r in rows]
+    )
+
+
+@router.post(
+    "/fiscal-establishments/{establishment_id}/certificates",
+    response_model=schemas.EstablishmentCertificateOut,
+    status_code=201,
+)
+async def create_establishment_certificate(
+    establishment_id: uuid.UUID,
+    alias: str = Form(...),
+    certificate_secret_ref: str = Form(...),
+    certificate_key_id: str = Form(...),
+    actor: Actor = Depends(require_permissions("fiscal:write")),
+    session: AsyncSession = Depends(get_session),
+) -> schemas.EstablishmentCertificateOut:
+    row = (
+        await session.execute(
+            text(
+                """
+                INSERT INTO fiscal_certificates
+                    (organization_id, establishment_id, alias,
+                     certificate_secret_ref, certificate_key_id, is_active)
+                VALUES (:org, :eid, :alias, :ref, :kid, TRUE)
+                RETURNING id, establishment_id, alias, certificate_secret_ref,
+                          certificate_key_id, subject_name, not_valid_before,
+                          not_valid_after, is_active, created_at
+                """
+            ),
+            {
+                "org": actor.organization_id,
+                "eid": establishment_id,
+                "alias": alias,
+                "ref": certificate_secret_ref,
+                "kid": certificate_key_id,
+            },
+        )
+    ).mappings().one()
+    await session.commit()
+    return schemas.EstablishmentCertificateOut(**dict(row))
+
+
+@router.delete(
+    "/fiscal-establishments/{establishment_id}/certificates/{certificate_id}",
+    status_code=204,
+)
+async def delete_establishment_certificate(
+    establishment_id: uuid.UUID,
+    certificate_id: uuid.UUID,
+    actor: Actor = Depends(require_permissions("fiscal:write")),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    await session.execute(
+        text(
+            """
+            DELETE FROM fiscal_certificates
+             WHERE id = :cid AND establishment_id = :eid AND organization_id = :org
+            """
+        ),
+        {"cid": certificate_id, "eid": establishment_id, "org": actor.organization_id},
+    )
+    await session.commit()
+    return Response(status_code=204)
