@@ -13,6 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from stk_os.commands import record_change
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
+from stk_os.dependencies import (
+    get_actor,
+    get_current_actor,
+    get_current_user,
+    get_session,
+    require_auth,
+    require_permission,
+)
 from stk_os import schemas
 from stk_os.models import (
     AuditEvent,
