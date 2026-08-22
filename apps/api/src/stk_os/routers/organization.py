@@ -6,13 +6,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, Response, UploadFile
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from stk_os.commands import record_change
 from stk_os.database import SessionDep
 from stk_os.dependencies import ActorDep, current_actor, require_permission
+from stk_os.fiscal import certificate_vault
 from stk_os import schemas
 from stk_os.models import (
     AuditEvent,
@@ -737,34 +738,79 @@ def create_establishment_certificate(
     establishment_id: uuid.UUID,
     session: SessionDep,
     actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
-    alias: Annotated[str, Form()],
-    certificate_secret_ref: Annotated[str, Form()],
-    certificate_key_id: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    password: Annotated[str, Form()],
+    environment: Annotated[str, Form()] = "homologation",
+    alias: Annotated[str | None, Form()] = None,
 ) -> schemas.EstablishmentCertificateOut:
     establishment = scoped_establishment(session, establishment_id, actor.organization_id)
-    row = (
-        session.execute(
-            text(
-                """
-                INSERT INTO fiscal_certificates
-                    (organization_id, establishment_id, alias,
-                     certificate_secret_ref, certificate_key_id, is_active)
-                VALUES (:org, :eid, :alias, :ref, :kid, TRUE)
-                RETURNING id, establishment_id, alias, certificate_secret_ref,
-                          certificate_key_id, subject_name, not_valid_before,
-                          not_valid_after, is_active, created_at
-                """
-            ),
-            {
-                "org": actor.organization_id,
-                "eid": establishment.id,
-                "alias": alias,
-                "ref": certificate_secret_ref,
-                "kid": certificate_key_id,
-            },
-        )
-        .mappings()
-        .one()
+    if environment not in {"homologation", "production"}:
+        raise HTTPException(status_code=422, detail="Ambiente inválido")
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="Arquivo vazio")
+    if len(content) > 512_000:
+        raise HTTPException(status_code=413, detail="Arquivo maior que 500 KB")
+    try:
+        info = certificate_vault.inspect_pfx(content, password)
+    except certificate_vault.CertificateError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if info["expired"]:
+        raise HTTPException(status_code=422, detail="Certificado expirado")
+
+    key_id = certificate_vault.new_key_id(establishment_id, environment)
+    material_ct, material_nonce = certificate_vault.encrypt(content)
+    password_ct, password_nonce = certificate_vault.encrypt(password.encode())
+
+    row = session.execute(
+        text(
+            """
+            INSERT INTO fiscal_certificates (
+                organization_id, establishment_id, alias, environment,
+                certificate_secret_ref, certificate_key_id,
+                subject_name, not_valid_before, not_valid_after,
+                thumbprint_sha256, material_ciphertext, material_nonce,
+                password_ciphertext, password_nonce, is_active
+            ) VALUES (
+                :org, :est, :alias, :env, :ref, :kid,
+                :subject, :nvb, :nva, :thumb, :mct, :mn, :pct, :pn, true
+            )
+            RETURNING id, establishment_id, alias, environment,
+                      certificate_secret_ref, certificate_key_id, subject_name,
+                      not_valid_before, not_valid_after, is_active, created_at
+            """
+        ),
+        {
+            "org": actor.organization_id,
+            "est": establishment.id,
+            "alias": alias or file.filename or "Certificado A1",
+            "env": environment,
+            "ref": f"db://fiscal_certificates/{key_id}",
+            "kid": key_id,
+            "subject": info["subject_name"],
+            "nvb": info["not_valid_before"],
+            "nva": info["not_valid_after"],
+            "thumb": info["thumbprint_sha256"],
+            "mct": material_ct,
+            "mn": material_nonce,
+            "pct": password_ct,
+            "pn": password_nonce,
+        },
+    ).mappings().one()
+
+    # Liga a configuração fiscal do ambiente a este certificado.
+    session.execute(
+        text(
+            """
+            UPDATE fiscal_establishment_configs
+               SET certificate_secret_ref = :ref,
+                   certificate_key_id = :kid,
+                   updated_at = now()
+             WHERE establishment_id = :est AND environment = :env
+            """
+        ),
+        {"ref": row["certificate_secret_ref"], "kid": key_id,
+         "est": establishment.id, "env": environment},
     )
     session.commit()
     return schemas.EstablishmentCertificateOut(**dict(row))
