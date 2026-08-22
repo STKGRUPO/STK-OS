@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Any, Literal
+from decimal import
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -214,3 +215,32 @@ class FiscalConfigResponse(BaseModel):
 
 class FiscalConfigListResponse(BaseModel):
     configs: list[FiscalConfigResponse]
+
+
+class ProductServiceUpsert(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=255)
+    business_unit_ids: list[uuid.UUID] = []
+    code: str | None = Field(default=None, max_length=50)
+    description: str | None = Field(default=None, max_length=2000)
+    default_amount: Decimal | None = None
+    service_code: str | None = Field(default=None, max_length=20)
+    nbs_code: str | None = Field(default=None, max_length=20)
+    status: Literal["active", "inactive"] = "active"
+
+
+class ProductServiceResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    code: str | None = None
+    description: str | None = None
+    default_amount: Decimal | None = None
+    service_code: str | None = None
+    nbs_code: str | None = None
+    business_unit_ids: list[uuid.UUID] = []
+    status: str
+
+
+class ProductServiceListResponse(BaseModel):
+    items: list[ProductServiceResponse]
