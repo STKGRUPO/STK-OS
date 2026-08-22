@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response
-from sqlalchemy import select text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from stk_os.commands import record_change
