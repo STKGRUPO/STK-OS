@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Header, HTTPException, Request, Response
-from sqlalchemy import select
+from sqlalchemy import select text
 from sqlalchemy.exc import IntegrityError
 
 from stk_os.commands import record_change
@@ -696,13 +696,18 @@ def create_product_service(
     "/fiscal-establishments/{establishment_id}/certificates",
     response_model=schemas.EstablishmentCertificateListOut,
 )
-async def list_establishment_certificates(
+@router.get(
+    "/fiscal-establishments/{establishment_id}/certificates",
+    response_model=schemas.EstablishmentCertificateListOut,
+)
+def list_establishment_certificates(
     establishment_id: uuid.UUID,
-    actor: Actor = Depends(require_permission("fiscal:read")),
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:read"))],
 ) -> schemas.EstablishmentCertificateListOut:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
     rows = (
-        await session.execute(
+        session.execute(
             text(
                 """
                 SELECT id, establishment_id, alias, certificate_secret_ref,
@@ -713,11 +718,13 @@ async def list_establishment_certificates(
                  ORDER BY created_at DESC
                 """
             ),
-            {"eid": establishment_id, "org": actor.organization_id},
+            {"eid": establishment.id, "org": actor.organization_id},
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return schemas.EstablishmentCertificateListOut(
-        certificates=[schemas.EstablishmentCertificateOut(**dict(r)) for r in rows]
+        certificates=[schemas.EstablishmentCertificateOut(**dict(row)) for row in rows]
     )
 
 
@@ -726,16 +733,17 @@ async def list_establishment_certificates(
     response_model=schemas.EstablishmentCertificateOut,
     status_code=201,
 )
-async def create_establishment_certificate(
+def create_establishment_certificate(
     establishment_id: uuid.UUID,
-    alias: str = Form(...),
-    certificate_secret_ref: str = Form(...),
-    certificate_key_id: str = Form(...),
-    actor: Actor = Depends(require_permission("fiscal:write")),
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+    alias: Annotated[str, Form()],
+    certificate_secret_ref: Annotated[str, Form()],
+    certificate_key_id: Annotated[str, Form()],
 ) -> schemas.EstablishmentCertificateOut:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
     row = (
-        await session.execute(
+        session.execute(
             text(
                 """
                 INSERT INTO fiscal_certificates
@@ -749,14 +757,16 @@ async def create_establishment_certificate(
             ),
             {
                 "org": actor.organization_id,
-                "eid": establishment_id,
+                "eid": establishment.id,
                 "alias": alias,
                 "ref": certificate_secret_ref,
                 "kid": certificate_key_id,
             },
         )
-    ).mappings().one()
-    await session.commit()
+        .mappings()
+        .one()
+    )
+    session.commit()
     return schemas.EstablishmentCertificateOut(**dict(row))
 
 
@@ -764,20 +774,22 @@ async def create_establishment_certificate(
     "/fiscal-establishments/{establishment_id}/certificates/{certificate_id}",
     status_code=204,
 )
-async def delete_establishment_certificate(
+def delete_establishment_certificate(
     establishment_id: uuid.UUID,
     certificate_id: uuid.UUID,
-    actor: Actor = Depends(require_permission("fiscal:write")),
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
 ) -> Response:
-    await session.execute(
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    session.execute(
         text(
             """
             DELETE FROM fiscal_certificates
              WHERE id = :cid AND establishment_id = :eid AND organization_id = :org
             """
         ),
-        {"cid": certificate_id, "eid": establishment_id, "org": actor.organization_id},
+        {"cid": certificate_id, "eid": establishment.id, "org": actor.organization_id},
     )
-    await session.commit()
+    session.commit()
     return Response(status_code=204)
+
