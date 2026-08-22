@@ -17,6 +17,7 @@ from stk_os.models import (
     AuditEvent,
     BusinessUnit,
     FiscalEstablishment,
+    FiscalEstablishmentConfig,
     IdempotencyKey,
     LegalEntity,
     Organization,
@@ -26,6 +27,9 @@ from stk_os.schemas import (
     ActorContext,
     BusinessUnitResponse,
     BusinessUnitUpdate,
+    FiscalConfigListResponse,
+    FiscalConfigResponse,
+    FiscalConfigUpsert,
     FiscalEstablishmentCreate,
     FiscalEstablishmentResponse,
     FiscalEstablishmentUpdate,
@@ -510,5 +514,108 @@ def update_business_unit(
     record.response_status = 200
     record.response_body = response.model_dump(mode="json")
     record.completed_at = now
+    session.commit()
+    return response
+
+def fiscal_config_response(config: FiscalEstablishmentConfig) -> FiscalConfigResponse:
+    return FiscalConfigResponse(
+        id=config.id,
+        establishment_id=config.establishment_id,
+        environment=config.environment,
+        provider=config.provider,
+        emission_method=config.emission_method,
+        endpoint=config.endpoint,
+        query_base_url=config.query_base_url,
+        certificate_secret_ref=config.certificate_secret_ref,
+        certificate_key_id=config.certificate_key_id,
+        municipality_code=config.municipality_code,
+        series=config.series,
+        next_dps_number=config.next_dps_number,
+        service_code=config.service_code,
+        nbs_code=config.nbs_code,
+        fiscal_rules=config.fiscal_rules or {},
+        status=config.status,
+    )
+
+
+@router.get(
+    "/fiscal-establishments/{establishment_id}/fiscal-configs",
+    response_model=FiscalConfigListResponse,
+)
+def list_fiscal_configs(
+    establishment_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:read"))],
+) -> FiscalConfigListResponse:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    configs = session.scalars(
+        select(FiscalEstablishmentConfig)
+        .where(FiscalEstablishmentConfig.establishment_id == establishment.id)
+        .where(FiscalEstablishmentConfig.organization_id == actor.organization_id)
+        .order_by(FiscalEstablishmentConfig.environment)
+    ).all()
+    return FiscalConfigListResponse(configs=[fiscal_config_response(item) for item in configs])
+
+
+@router.post(
+    "/fiscal-establishments/{establishment_id}/fiscal-configs",
+    response_model=FiscalConfigResponse,
+    status_code=200,
+)
+def upsert_fiscal_config(
+    establishment_id: uuid.UUID,
+    command: FiscalConfigUpsert,
+    request: Request,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> FiscalConfigResponse:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    config = session.scalars(
+        select(FiscalEstablishmentConfig)
+        .where(FiscalEstablishmentConfig.establishment_id == establishment.id)
+        .where(FiscalEstablishmentConfig.environment == command.environment)
+        .where(FiscalEstablishmentConfig.organization_id == actor.organization_id)
+    ).one_or_none()
+    before = fiscal_config_response(config).model_dump(mode="json") if config else None
+    if config is None:
+        config = FiscalEstablishmentConfig(
+            organization_id=actor.organization_id,
+            establishment_id=establishment.id,
+            environment=command.environment,
+            provider="sefin_nacional",
+        )
+        session.add(config)
+    for field in (
+        "emission_method",
+        "endpoint",
+        "query_base_url",
+        "certificate_secret_ref",
+        "certificate_key_id",
+        "municipality_code",
+        "series",
+        "next_dps_number",
+        "service_code",
+        "nbs_code",
+        "fiscal_rules",
+        "status",
+    ):
+        setattr(config, field, getattr(command, field))
+    flush_or_conflict(session, "Configuração fiscal já existe para este ambiente")
+    response = fiscal_config_response(config)
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="organization.fiscal_config.upserted",
+        resource_type="fiscal_establishment_config",
+        resource_id=config.id,
+        before_state=before,
+        after_state=response.model_dump(mode="json"),
+        event_type="organization.fiscal_config.upserted.v1",
+        event_payload={
+            "fiscal_establishment_id": str(establishment.id),
+            "environment": config.environment,
+        },
+    )
     session.commit()
     return response
