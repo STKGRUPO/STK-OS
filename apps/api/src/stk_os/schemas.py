@@ -244,3 +244,20 @@ class ProductServiceResponse(BaseModel):
 
 class ProductServiceListResponse(BaseModel):
     items: list[ProductServiceResponse]
+
+
+class EstablishmentCertificateOut(BaseModel):
+    id: uuid.UUID
+    establishment_id: uuid.UUID
+    alias: str
+    certificate_secret_ref: str
+    certificate_key_id: str
+    subject_name: str | None = None
+    not_valid_before: datetime | None = None
+    not_valid_after: datetime | None = None
+    is_active: bool = True
+    created_at: datetime
+
+
+class EstablishmentCertificateListOut(BaseModel):
+    certificates: list[EstablishmentCertificateOut]
