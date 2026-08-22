@@ -698,7 +698,7 @@ def create_product_service(
 )
 async def list_establishment_certificates(
     establishment_id: uuid.UUID,
-    actor: Actor = Depends(require_permissions("fiscal:read")),
+    actor: Actor = Depends(require_permission("fiscal:read")),
     session: AsyncSession = Depends(get_session),
 ) -> schemas.EstablishmentCertificateListOut:
     rows = (
@@ -731,7 +731,7 @@ async def create_establishment_certificate(
     alias: str = Form(...),
     certificate_secret_ref: str = Form(...),
     certificate_key_id: str = Form(...),
-    actor: Actor = Depends(require_permissions("fiscal:write")),
+    actor: Actor = Depends(require_permission("fiscal:write")),
     session: AsyncSession = Depends(get_session),
 ) -> schemas.EstablishmentCertificateOut:
     row = (
@@ -767,7 +767,7 @@ async def create_establishment_certificate(
 async def delete_establishment_certificate(
     establishment_id: uuid.UUID,
     certificate_id: uuid.UUID,
-    actor: Actor = Depends(require_permissions("fiscal:write")),
+    actor: Actor = Depends(require_permission("fiscal:write")),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     await session.execute(
