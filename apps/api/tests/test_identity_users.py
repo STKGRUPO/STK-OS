@@ -185,6 +185,24 @@ def test_public_registration_repairs_missing_context(
     assert [role["code"] for role in me.json()["roles"]] == ["user"]
 
 
+def test_public_registration_uses_existing_inactive_organization(
+    client: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    with session_factory() as session, session.begin():
+        organization = session.query(Organization).one()
+        organization.status = "inactive"
+        session.execute(delete(Role).where(Role.code == "user"))
+
+    created = client.post(
+        "/api/v1/auth/password/define",
+        json={
+            "email": "inactive.organization@example.test",
+            "password": "inactive-organization-password-001",
+        },
+    )
+    assert created.status_code == 200, created.text
+
+
 def test_public_registration_is_rate_limited(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -503,15 +503,14 @@ def ensure_registration_context(session: SessionDep) -> tuple[Organization, Role
         organization = session.scalar(
             select(Organization).where(Organization.code == DEFAULT_ORGANIZATION_CODE)
         )
-        if organization is not None:
-            raise HTTPException(status_code=503, detail="Cadastro temporariamente indisponível.")
-        organization = Organization(
-            code=DEFAULT_ORGANIZATION_CODE,
-            name=DEFAULT_ORGANIZATION_NAME,
-            status="active",
-        )
-        session.add(organization)
-        session.flush()
+        if organization is None:
+            organization = Organization(
+                code=DEFAULT_ORGANIZATION_CODE,
+                name=DEFAULT_ORGANIZATION_NAME,
+                status="active",
+            )
+            session.add(organization)
+            session.flush()
 
     role = session.scalar(
         select(Role).where(
