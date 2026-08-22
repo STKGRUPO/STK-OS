@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from stk_os.commands import record_change
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
+from stk_os import schemas
 from stk_os.models import (
     AuditEvent,
     BusinessUnit,
