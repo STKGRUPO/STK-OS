@@ -692,3 +692,175 @@ def create_product_service(
     )
     session.commit()
     return response
+
+_CERT_COLUMNS = """
+    id, establishment_id, environment, alias, certificate_key_id,
+    holder_name AS subject_name, tax_id, thumbprint,
+    not_before AS not_valid_before, not_after AS not_valid_after,
+    secret_ref AS certificate_secret_ref,
+    (status = 'active') AS is_active, created_at
+"""
+
+
+@router.get(
+    "/fiscal-establishments/{establishment_id}/certificates",
+    response_model=schemas.EstablishmentCertificateListOut,
+)
+def list_establishment_certificates(
+    establishment_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:read"))],
+) -> schemas.EstablishmentCertificateListOut:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    rows = (
+        session.execute(
+            text(
+                f"""
+                SELECT {_CERT_COLUMNS}
+                  FROM fiscal_certificates
+                 WHERE establishment_id = :eid AND organization_id = :org
+                 ORDER BY created_at DESC
+                """
+            ),
+            {"eid": establishment.id, "org": actor.organization_id},
+        )
+        .mappings()
+        .all()
+    )
+    return schemas.EstablishmentCertificateListOut(
+        certificates=[schemas.EstablishmentCertificateOut(**dict(row)) for row in rows]
+    )
+
+
+@router.post(
+    "/fiscal-establishments/{establishment_id}/certificates",
+    response_model=schemas.EstablishmentCertificateOut,
+    status_code=201,
+)
+def create_establishment_certificate(
+    establishment_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+    file: Annotated[UploadFile, File()],
+    password: Annotated[str, Form()],
+    environment: Annotated[str, Form()] = "homologation",
+    alias: Annotated[str | None, Form()] = None,
+) -> schemas.EstablishmentCertificateOut:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    if environment not in {"homologation", "production"}:
+        raise HTTPException(status_code=422, detail="Ambiente inválido")
+
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status_code=422, detail="Arquivo vazio")
+    if len(content) > 512_000:
+        raise HTTPException(status_code=413, detail="Arquivo maior que 500 KB")
+
+    try:
+        info = certificate_vault.inspect_pfx(content, password)
+    except certificate_vault.CertificateError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if info["expired"]:
+        raise HTTPException(status_code=422, detail="Certificado expirado")
+
+    key_id = certificate_vault.new_key_id(establishment.id, environment)
+    material_ct, material_nonce = certificate_vault.encrypt(content)
+    password_ct, password_nonce = certificate_vault.encrypt(password.encode())
+
+    row = (
+        session.execute(
+            text(
+                f"""
+                INSERT INTO fiscal_certificates (
+                    organization_id, establishment_id, environment, alias,
+                    certificate_key_id, holder_name, thumbprint,
+                    not_before, not_after, secret_ref, status,
+                    material_ciphertext, material_nonce,
+                    password_ciphertext, password_nonce
+                ) VALUES (
+                    :org, :est, :env, :alias,
+                    :kid, :subject, :thumb,
+                    :nvb, :nva, :ref, 'active',
+                    :mct, :mn, :pct, :pn
+                )
+                ON CONFLICT (establishment_id, environment) DO UPDATE SET
+                    alias = EXCLUDED.alias,
+                    certificate_key_id = EXCLUDED.certificate_key_id,
+                    holder_name = EXCLUDED.holder_name,
+                    thumbprint = EXCLUDED.thumbprint,
+                    not_before = EXCLUDED.not_before,
+                    not_after = EXCLUDED.not_after,
+                    secret_ref = EXCLUDED.secret_ref,
+                    status = 'active',
+                    material_ciphertext = EXCLUDED.material_ciphertext,
+                    material_nonce = EXCLUDED.material_nonce,
+                    password_ciphertext = EXCLUDED.password_ciphertext,
+                    password_nonce = EXCLUDED.password_nonce,
+                    updated_at = now()
+                RETURNING {_CERT_COLUMNS}
+                """
+            ),
+            {
+                "org": actor.organization_id,
+                "est": establishment.id,
+                "env": environment,
+                "alias": alias or file.filename or "Certificado A1",
+                "kid": key_id,
+                "subject": info["subject_name"],
+                "thumb": info["thumbprint_sha256"],
+                "nvb": info["not_valid_before"],
+                "nva": info["not_valid_after"],
+                "ref": f"db://fiscal_certificates/{key_id}",
+                "mct": material_ct,
+                "mn": material_nonce,
+                "pct": password_ct,
+                "pn": password_nonce,
+            },
+        )
+        .mappings()
+        .one()
+    )
+
+    session.execute(
+        text(
+            """
+            UPDATE fiscal_establishment_configs
+               SET certificate_secret_ref = :ref,
+                   certificate_key_id = :kid,
+                   updated_at = now()
+             WHERE establishment_id = :est AND environment = :env
+            """
+        ),
+        {
+            "ref": row["certificate_secret_ref"],
+            "kid": key_id,
+            "est": establishment.id,
+            "env": environment,
+        },
+    )
+    session.commit()
+    return schemas.EstablishmentCertificateOut(**dict(row))
+
+
+@router.delete(
+    "/fiscal-establishments/{establishment_id}/certificates/{certificate_id}",
+    status_code=204,
+)
+def delete_establishment_certificate(
+    establishment_id: uuid.UUID,
+    certificate_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> Response:
+    establishment = scoped_establishment(session, establishment_id, actor.organization_id)
+    session.execute(
+        text(
+            """
+            DELETE FROM fiscal_certificates
+             WHERE id = :cid AND establishment_id = :eid AND organization_id = :org
+            """
+        ),
+        {"cid": certificate_id, "eid": establishment.id, "org": actor.organization_id},
+    )
+    session.commit()
+    return Response(status_code=204)
