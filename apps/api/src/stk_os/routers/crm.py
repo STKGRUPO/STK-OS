@@ -196,14 +196,16 @@ def person_summary(session: Session, person: Person) -> PersonSummary:
 
 
 def company_summary(session: Session, company: Company) -> CompanySummary:
-    unit_ids = list(
-        session.scalars(
-            select(CompanyBusinessUnit.business_unit_id).where(
-                CompanyBusinessUnit.company_id == company.id,
-                CompanyBusinessUnit.status == "active",
-            )
-        ).all()
-    )
+    unit_rows = session.execute(
+        select(BusinessUnit.id, BusinessUnit.code, BusinessUnit.name)
+        .join(CompanyBusinessUnit, CompanyBusinessUnit.business_unit_id == BusinessUnit.id)
+        .where(
+            CompanyBusinessUnit.company_id == company.id,
+            CompanyBusinessUnit.status == "active",
+        )
+        .order_by(BusinessUnit.name)
+    ).all()
+    units = [CatalogItem(id=row.id, code=row.code, name=row.name) for row in unit_rows]
     return CompanySummary(
         id=company.id,
         legal_name=company.legal_name,
@@ -216,7 +218,8 @@ def company_summary(session: Session, company: Company) -> CompanySummary:
         postal_code=company.postal_code,
         site=company.site,
         status=company.status,
-        business_unit_ids=unit_ids,
+        business_unit_ids=[item.id for item in units],
+        business_units=units,
         contacts=contacts_for(session, company_id=company.id),
         created_at=company.created_at,
         updated_at=company.updated_at,
