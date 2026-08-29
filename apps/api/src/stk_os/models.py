@@ -296,6 +296,7 @@ class Company(TimestampMixin, Base):
     state_code: Mapped[str | None] = mapped_column(String(2))
     municipality_code: Mapped[str | None] = mapped_column(String(7))
     postal_code: Mapped[str | None] = mapped_column(String(8))
+    tax_regime: Mapped[str | None] = mapped_column(String(8)) 
     site: Mapped[str | None] = mapped_column(String(500))
     notes: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="active")
