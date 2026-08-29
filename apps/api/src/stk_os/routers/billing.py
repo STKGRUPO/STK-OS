@@ -1077,10 +1077,11 @@ def revalidate_item(
                 FiscalEstablishment.status == "active",
             )
         )
+
     if missing:
-        labels = ", ".join(FISCAL_FIELD_LABELS[field] for field in missing)
         item.status = "blocked"
         item.blocking_code = "CUSTOMER_FISCAL_DATA_INCOMPLETE"
+        labels = ", ".join(FISCAL_FIELD_LABELS[field] for field in missing)
         item.blocking_reason = f"Cadastro do cliente incompleto para fins fiscais: {labels}."
     elif item.issuer_establishment_id and issuer is None:
         item.status = "blocked"
