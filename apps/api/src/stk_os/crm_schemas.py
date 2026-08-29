@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 
 ContactKind = Literal["email", "phone", "whatsapp"]
 OpportunityStatus = Literal["open", "won", "lost"]
+TaxRegime = Literal["simples_nacional", "lucro_presumido", "lucro_real", "mei"]
 
 
 class ContactMethodInput(BaseModel):
@@ -65,6 +66,7 @@ class CompanyCreate(BaseModel):
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
     municipality_code: str | None = Field(default=None, pattern=r"^\d{7}$")
     postal_code: str | None = Field(default=None, pattern=r"^\d{8}$")
+    tax_regime: TaxRegime | None = None
     site: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=4000)
     business_unit_ids: list[uuid.UUID] = Field(min_length=1, max_length=3)
@@ -81,6 +83,7 @@ class CompanyUpdate(BaseModel):
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
     municipality_code: str | None = Field(default=None, pattern=r"^\d{7}$")
     postal_code: str | None = Field(default=None, pattern=r"^\d{8}$")
+    tax_regime: TaxRegime | None = None
     site: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=4000)
     status: Literal["active", "inactive"] | None = None
@@ -96,6 +99,7 @@ class CompanySummary(BaseModel):
     state_code: str | None
     municipality_code: str | None
     postal_code: str | None
+    tax_regime: str | None = None
     site: str | None
     status: str
     business_unit_ids: list[uuid.UUID]
