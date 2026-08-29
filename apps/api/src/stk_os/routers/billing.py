@@ -1075,4 +1075,25 @@ def revalidate_item(
             select(FiscalEstablishment).where(
                 FiscalEstablishment.id == item.issuer_establishment_id,
                 FiscalEstablishment.status == "active",
-     
+            )
+        )
+    if missing:
+        labels = ", ".join(FISCAL_FIELD_LABELS[field] for field in missing)
+        item.status = "blocked"
+        item.blocking_code = "CUSTOMER_FISCAL_DATA_INCOMPLETE"
+        item.blocking_reason = f"Cadastro do cliente incompleto para fins fiscais: {labels}."
+    elif item.issuer_establishment_id and issuer is None:
+        item.status = "blocked"
+        item.blocking_code = "ISSUER_UNAVAILABLE"
+        item.blocking_reason = "O estabelecimento emissor está ausente ou inativo."
+    else:
+        item.status = "ready"
+        item.blocking_code = None
+        item.blocking_reason = None
+
+    item.updated_at = datetime.now(UTC)
+    session.commit()
+    session.refresh(item)
+    return BillingItemDetail(
+        **item_summary(session, item).model_dump(), snapshot=item.snapshot, history=[]
+    )
