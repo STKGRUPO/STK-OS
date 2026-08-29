@@ -97,10 +97,15 @@ class BillingItemDetail(BillingItemSummary):
 
 class BillingExceptionResponse(BaseModel):
     billing_item_id: uuid.UUID
-    contract_id: uuid.UUID | None
+    contract_id: uuid.UUID | None = None
     contract_number: str
     competence_month: str
     customer_name: str
+    # ↓ novos campos
+    business_unit_id: uuid.UUID
+    business_unit_name: str
+    customer_company_id: uuid.UUID | None = None
+    status: str = "blocked"
     code: str
     reason: str
     created_at: datetime
