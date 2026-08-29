@@ -950,7 +950,7 @@ def list_exceptions(
     result = []
     for item in session.scalars(statement.order_by(BillingItem.created_at.desc())):
         base = item_summary(session, item)
-       result.append(
+        result.append(
             BillingExceptionResponse(
                 billing_item_id=item.id,
                 contract_id=item.contract_id,
