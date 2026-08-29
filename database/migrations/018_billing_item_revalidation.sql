@@ -1,5 +1,5 @@
--- Permite revalidar itens bloqueados: status blocked -> ready/cancelled e
--- reescrita do motivo do bloqueio. O snapshot financeiro segue imutável.
+-- Permite revalidar itens bloqueados: blocked -> ready/cancelled e reescrita do motivo.
+-- O snapshot financeiro segue imutável.
 CREATE OR REPLACE FUNCTION protect_billing_item_history()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -20,7 +20,6 @@ BEGIN
         RAISE EXCEPTION 'billing item financial snapshot is immutable';
     END IF;
 
-    -- Fora do estado 'blocked', valor/moeda/versão/emissor continuam imutáveis.
     IF OLD.status <> 'blocked' AND (
            NEW.contract_version_id IS DISTINCT FROM OLD.contract_version_id
         OR NEW.issuer_establishment_id IS DISTINCT FROM OLD.issuer_establishment_id
@@ -36,4 +35,13 @@ BEGIN
         ('ready', 'ready'), ('ready', 'requested'),
         ('requested', 'requested'), ('requested', 'completed'),
         ('blocked', 'blocked'), ('blocked', 'ready'), ('blocked', 'cancelled'),
-        ('read
+        ('ready', 'cancelled'), ('requested', 'cancelled'),
+        ('cancelled', 'cancelled'), ('completed', 'completed')
+    ) THEN
+        RAISE EXCEPTION 'invalid billing item state transition';
+    END IF;
+
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$;
