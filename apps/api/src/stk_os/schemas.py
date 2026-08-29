@@ -60,6 +60,7 @@ class LegalEntityCreate(BaseModel):
     trade_name: str | None = Field(default=None, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=14)
     status: Literal["active", "inactive"] = "active"
+    tax_regime: str | None = None
     code: str | None = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
 
     _normalize_tax_id = field_validator("tax_id", mode="before")(normalize_tax_id)
@@ -72,6 +73,7 @@ class LegalEntityUpdate(BaseModel):
     trade_name: str | None = Field(default=None, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=14)
     status: Literal["active", "inactive"]
+    tax_regime: str | None = None
 
     _normalize_tax_id = field_validator("tax_id", mode="before")(normalize_tax_id)
 
@@ -119,6 +121,7 @@ class LegalEntityResponse(BaseModel):
     trade_name: str | None
     tax_id: str | None
     status: str
+    tax_regime: str | None = None
     establishments: list[FiscalEstablishmentResponse]
 
 
