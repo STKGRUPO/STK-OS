@@ -126,6 +126,7 @@ def legal_entity_response(session: SessionDep, entity: LegalEntity) -> LegalEnti
         trade_name=entity.trade_name,
         tax_id=entity.tax_id,
         status=entity.status,
+        tax_regime=entity.tax_regime,
         establishments=[establishment_response(session, item) for item in establishments],
     )
 
@@ -254,6 +255,7 @@ def get_organization(
                 trade_name=entity.trade_name,
                 tax_id=entity.tax_id,
                 status=entity.status,
+                tax_regime=entity.tax_regime,
                 establishments=establishments_by_entity.get(entity.id, []),
             )
             for entity in entities
@@ -279,6 +281,7 @@ def create_legal_entity(
         trade_name=command.trade_name,
         tax_id=command.tax_id,
         status=command.status,
+        tax_regime=command.tax_regime,
     )
     session.add(entity)
     flush_or_conflict(session, "CNPJ ou código já cadastrado")
@@ -317,6 +320,7 @@ def update_legal_entity(
     entity.trade_name = command.trade_name
     entity.tax_id = command.tax_id
     entity.status = command.status
+    entity.tax_regime = command.tax_regime
     flush_or_conflict(session, "CNPJ já cadastrado")
     response = legal_entity_response(session, entity)
     record_change(
