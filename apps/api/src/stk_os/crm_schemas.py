@@ -31,7 +31,6 @@ class PersonCreate(BaseModel):
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
     notes: str | None = Field(default=None, max_length=4000)
     business_unit_ids: list[uuid.UUID] = Field(min_length=1, max_length=3)
-    business_units: list[CatalogItem] = []
     lead_source_id: uuid.UUID | None = None
     contacts: list[ContactMethodInput] = Field(default_factory=list, max_length=10)
 
@@ -100,6 +99,7 @@ class CompanySummary(BaseModel):
     site: str | None
     status: str
     business_unit_ids: list[uuid.UUID]
+    business_units: list[CatalogItem] = []
     contacts: list[ContactMethodResponse]
     created_at: datetime
     updated_at: datetime
