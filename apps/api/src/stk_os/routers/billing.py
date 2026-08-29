@@ -1018,3 +1018,61 @@ def billing_summary(
         by_business_unit=list(grouped.values()),
     )
 
+
+FISCAL_FIELD_LABELS = {
+    "tax_id": "CNPJ",
+    "postal_code": "CEP",
+    "city": "cidade",
+    "municipality_code": "código IBGE do município",
+}
+
+
+def only_digits(value: str | None) -> str:
+    return "".join(char for char in (value or "") if char.isdigit())
+
+
+def missing_customer_fiscal_fields(company: Company | None) -> list[str]:
+    if company is None:
+        return list(FISCAL_FIELD_LABELS)
+    missing: list[str] = []
+    if len(only_digits(company.tax_id)) != 14:
+        missing.append("tax_id")
+    if len(only_digits(company.postal_code)) != 8:
+        missing.append("postal_code")
+    if not (company.city or "").strip():
+        missing.append("city")
+    if len(only_digits(company.municipality_code)) != 7:
+        missing.append("municipality_code")
+    return missing
+
+
+@router.post("/items/{item_id}/revalidate", response_model=BillingItemDetail)
+def revalidate_item(
+    item_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("billing:review"))],
+) -> BillingItemDetail:
+    item = session.scalar(
+        select(BillingItem).where(
+            BillingItem.id == item_id, BillingItem.organization_id == actor.organization_id
+        )
+    )
+    if item is None:
+        raise HTTPException(status_code=404, detail="Obrigação de faturamento não encontrada")
+    ensure_unit_access(session, actor, "billing:review", item.business_unit_id)
+
+    if item.status in ("requested", "completed", "cancelled"):
+        return BillingItemDetail(
+            **item_summary(session, item).model_dump(), snapshot=item.snapshot, history=[]
+        )
+
+    company = session.get(Company, item.customer_company_id)
+    missing = missing_customer_fiscal_fields(company)
+
+    issuer = None
+    if item.issuer_establishment_id:
+        issuer = session.scalar(
+            select(FiscalEstablishment).where(
+                FiscalEstablishment.id == item.issuer_establishment_id,
+                FiscalEstablishment.status == "active",
+     
