@@ -1017,3 +1017,40 @@ def billing_summary(
         ready_contracts=len(ready),
         by_business_unit=list(grouped.values()),
     )
+
+
+@router.post("/items/{item_id}/revalidate", response_model=BillingItemResponse)
+def revalidate_item(
+    item_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("billing:review"))],
+) -> BillingItemResponse:
+    item = session.get(BillingItem, item_id)
+    if item is None or item.organization_id != actor.organization_id:
+        raise HTTPException(status_code=404, detail="Billing item not found")
+
+    missing: list[str] = []
+    company = session.get(Company, item.customer_company_id) if item.customer_company_id else None
+    if company is None:
+        missing.append("customer")
+    else:
+        if not (company.tax_id or "").strip():
+            missing.append("customer.tax_id")
+        if not (getattr(company, "municipality_code", None) or "").strip():
+            missing.append("customer.municipality_code")
+        if not (getattr(company, "postal_code", None) or "").strip():
+            missing.append("customer.postal_code")
+
+    if missing:
+        item.status = "blocked"
+        item.blocking_code = "CUSTOMER_FISCAL_DATA_INCOMPLETE"
+        item.blocking_reason = "Campos pendentes: " + ", ".join(missing)
+    else:
+        item.status = "ready"
+        item.blocking_code = None
+        item.blocking_reason = None
+
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item_summary(session, item)
