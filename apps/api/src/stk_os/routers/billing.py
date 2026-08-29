@@ -950,13 +950,17 @@ def list_exceptions(
     result = []
     for item in session.scalars(statement.order_by(BillingItem.created_at.desc())):
         base = item_summary(session, item)
-        result.append(
+       result.append(
             BillingExceptionResponse(
                 billing_item_id=item.id,
                 contract_id=item.contract_id,
                 contract_number=base.contract_number,
                 competence_month=base.competence_month,
                 customer_name=base.customer_name,
+                business_unit_id=base.business_unit_id,
+                business_unit_name=base.business_unit_name,
+                customer_company_id=item.customer_company_id,
+                status=item.status,
                 code=item.blocking_code or "UNKNOWN",
                 reason=item.blocking_reason or "Bloqueio sem detalhe",
                 created_at=item.created_at,
