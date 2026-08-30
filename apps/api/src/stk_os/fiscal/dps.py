@@ -16,14 +16,8 @@ SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def emission_timestamp() -> str:
-    """Data/hora de emissão do DPS no fuso oficial, com margem de segurança.
-
-    A SEFIN rejeita (E0008) qualquer dhEmi posterior ao instante em que ela
-    recebe o arquivo. Recuamos alguns segundos para absorver diferença de
-    relógio entre o Railway e o servidor da SEFIN.
-    """
-    SubElement(inf, "dhEmi").text = emission_timestamp()
-    SubElement(inf, "dCompet").text = str(service_date)
+    """Gera o instante de emissão no fuso de São Paulo com margem segura."""
+    now = datetime.now(SP_TZ) - timedelta(seconds=120)
     return now.replace(microsecond=0).isoformat()
     
 
@@ -85,7 +79,7 @@ def build_dps(
     root = etree.Element(q("DPS"), nsmap={None: NS}, versao="1.01")
     inf = etree.SubElement(root, q("infDPS"), Id=identifier)
     add(inf, "tpAmb", "1" if snapshot["environment"] == "production" else "2")
-    add(inf, "dhEmi", issued_at.replace(microsecond=0).isoformat())
+    add(inf, "dhEmi", emission_timestamp())
     add(inf, "verAplic", "STK-OS-Fiscal-1.0")
     add(inf, "serie", series)
     add(inf, "nDPS", number)
