@@ -157,9 +157,6 @@ class LocalSigningGateway:
     def __init__(self, transport: SefinGateway, signer, material):
         self.transport = transport
         self.signer = signer
-        head = signed[:400].decode("utf-8", "ignore")
-        if 'xmlns="http://www.sped.fazenda.gov.br/nfse"' not in head:
-            raise RuntimeError(f"DPS com namespace invalido (E1228). Inicio do XML: {head}")
         self.material = material
 
     def issue(self, *, endpoint: str, dps_id: str, signed_xml: bytes) -> ProviderResult:
