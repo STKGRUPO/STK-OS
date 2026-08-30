@@ -392,7 +392,7 @@ def transmit_existing(
     if identifier != issuance.dps_id:
         raise HTTPException(status_code=409, detail="Identidade DPS divergente; emissão bloqueada")
     try:
-        gateway = runtime.gateway_for(config)
+        gateway = runtime.gateway_for(session, config)
     except (RuntimeError, ValueError) as error:
         issuance.status = "configuration_error"
         issuance.error_category = "configuration"
@@ -628,7 +628,7 @@ def reconcile_issuance(
         config = session.get(FiscalEstablishmentConfig, issuance.establishment_config_id)
         if config is None:
             raise HTTPException(status_code=422, detail="Configuração fiscal indisponível")
-        gateway = runtime.gateway_for(config)
+        gateway = runtime.gateway_for(session, config)
         attempt = FiscalAttempt(
             issuance_id=issuance.id,
             attempt_number=next_attempt_number(session, issuance.id),
