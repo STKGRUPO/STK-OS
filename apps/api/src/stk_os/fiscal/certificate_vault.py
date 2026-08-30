@@ -167,19 +167,6 @@ _CERTIFICATE_QUERY = text(
 
 def _load_stored_material(session, establishment_config) -> tuple[bytes, str]:
     """Busca o .pfx e a senha cifrados em fiscal_certificates e descriptografa."""
-    from stk_os.models import FiscalCertificate  # ajuste se o nome do modelo for outro
-
-    certificate = session.scalar(
-        select(FiscalCertificate)
-        .where(
-            FiscalCertificate.establishment_id == establishment_config.establishment_id,
-            FiscalCertificate.environment == establishment_config.environment,
-            FiscalCertificate.status == "active",
-        )
-        .order_by(FiscalCertificate.created_at.desc())
-        .limit(1)
-    )
-    if certificate is None:
     row = session.execute(
         _CERTIFICATE_QUERY,
         {
@@ -191,11 +178,30 @@ def _load_stored_material(session, establishment_config) -> tuple[bytes, str]:
         raise CertificateConfigurationError(
             "Nenhum certificado A1 ativo para este emissor e ambiente"
         )
-    pfx = decrypt(certificate.material_ciphertext, certificate.material_nonce)
-    password = decrypt(certificate.password_ciphertext, certificate.password_nonce).decode()
     pfx = decrypt(bytes(row[0]), bytes(row[1]))
     password = decrypt(bytes(row[2]), bytes(row[3])).decode()
     return pfx, password
 
 
+def material_for(session, establishment_config) -> CertificateMaterial:
+    """Devolve cert/chave em PEM, apenas em memória, para assinar o DPS."""
+    pfx, password = _load_stored_material(session, establishment_config)
+    certificate_pem, private_key_pem = load_pem_pair(pfx, password)
+    return CertificateMaterial(certificate_pem, private_key_pem, None)
+
+
+def ssl_context_for(session, establishment_config) -> ssl.SSLContext:
+    """Cria o SSLContext mTLS a partir do A1 descriptografado."""
+    pfx, password = _load_stored_material(session, establishment_config)
+    certificate_pem, private_key_pem = load_pem_pair(pfx, password)
+    context = ssl.create_default_context()
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = Path(tmp) / "client.pem"
+        chain.write_bytes(certificate_pem + b"\n" + private_key_pem)
+        try:
+            context.load_cert_chain(str(chain))
+        except ssl.SSLError as error:
+            raise CertificateConfigurationError(
+                "Certificado A1 inválido ou senha incorreta"
+            ) from error
     return context
