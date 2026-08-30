@@ -205,8 +205,8 @@ class FiscalConfigResponse(BaseModel):
     emission_method: str
     endpoint: str
     query_base_url: str
-    certificate_secret_ref: str
-    certificate_key_id: str
+    certificate_secret_ref: str | None = None
+    certificate_key_id: str | None = None
     municipality_code: str
     series: int
     next_dps_number: int
@@ -253,8 +253,8 @@ class EstablishmentCertificateOut(BaseModel):
     id: uuid.UUID
     establishment_id: uuid.UUID
     alias: str
-    certificate_secret_ref: str
-    certificate_key_id: str
+    certificate_secret_ref: str | None = None
+    certificate_key_id: str | None = None
     subject_name: str | None = None
     not_valid_before: datetime | None = None
     not_valid_after: datetime | None = None
