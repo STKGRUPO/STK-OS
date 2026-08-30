@@ -83,3 +83,32 @@ def ssl_context_from_pfx(content: bytes, password: str) -> "ssl.SSLContext":
         key_file.write_bytes(key_pem)
         context.load_cert_chain(certfile=str(cert_file), keyfile=str(key_file))
     return context
+
+
+import ssl
+import tempfile
+from pathlib import Path
+
+from stk_os.fiscal.signing import CertificateConfigurationError, CertificateMaterial
+
+
+def material_for(session, establishment_config) -> CertificateMaterial:
+    """Devolve cert/chave em PEM, apenas em memória, para assinar o DPS."""
+    certificate_pem, private_key_pem = load_pem_pair(session, establishment_config)
+    return CertificateMaterial(certificate_pem, private_key_pem, None)
+
+
+def ssl_context_for(session, establishment_config) -> ssl.SSLContext:
+    """Cria o SSLContext mTLS a partir do A1 descriptografado."""
+    certificate_pem, private_key_pem = load_pem_pair(session, establishment_config)
+    context = ssl.create_default_context()
+    with tempfile.TemporaryDirectory() as tmp:
+        chain = Path(tmp) / "client.pem"
+        chain.write_bytes(certificate_pem + b"\n" + private_key_pem)
+        try:
+            context.load_cert_chain(str(chain))
+        except ssl.SSLError as error:
+            raise CertificateConfigurationError(
+                "Certificado A1 inválido ou senha incorreta"
+            ) from error
+    return context
