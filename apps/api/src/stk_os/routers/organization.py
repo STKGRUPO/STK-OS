@@ -598,7 +598,7 @@ def upsert_fiscal_config(
             provider="sefin_nacional",
         )
         session.add(config)
-   for field in (
+    for field in (
         "emission_method",
         "endpoint",
         "query_base_url",
