@@ -608,6 +608,10 @@ def upsert_fiscal_config(
         "nbs_code",
         "fiscal_rules",
         "status",
+    if not config.certificate_secret_ref:
+        config.certificate_secret_ref = "db://fiscal_certificates"
+    if not config.certificate_key_id:
+        config.certificate_key_id = str(establishment.id)
     ):
         setattr(config, field, getattr(command, field))
     flush_or_conflict(session, "Configuração fiscal já existe para este ambiente")
