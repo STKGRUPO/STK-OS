@@ -28,6 +28,7 @@ from stk_os.models import (
     ActorRole,
     AuditEvent,
     BillingItem,
+    BillingItemRemoval,
     BillingRun,
     BillingRunContract,
     BusinessUnit,
@@ -39,6 +40,7 @@ from stk_os.models import (
     ContractVersionContact,
     ContractVersionService,
     FiscalEstablishment,
+    FiscalIssuance,
     LegalEntity,
     OperationalException,
     OutboxEvent,
@@ -86,6 +88,12 @@ def ensure_unit_access(
     scope = unit_scope(session, actor, permission)
     if scope is not None and business_unit_id not in scope:
         raise HTTPException(status_code=404, detail="Recurso de faturamento não encontrado")
+
+
+def visible_billing_items():
+    return ~select(BillingItemRemoval.id).where(
+        BillingItemRemoval.billing_item_id == BillingItem.id
+    ).exists()
 
 
 def version_at(session: Session, contract_id: uuid.UUID, on_date: date) -> ContractVersion | None:
@@ -379,11 +387,12 @@ def create_item_for_contract(
     competence_end: date,
 ) -> tuple[BillingItem, bool]:
     existing = session.scalar(
-        select(BillingItem).where(
-            BillingItem.contract_id == contract.id,
-            BillingItem.competence_month == competence,
-        )
+    select(BillingItem).where(
+        BillingItem.contract_id == contract.id,
+        BillingItem.competence_month == competence,
+        visible_billing_items(),
     )
+)
     if existing:
         return existing, False
 
@@ -855,7 +864,10 @@ def list_items(
     run_id: uuid.UUID | None = None,
 ) -> list[BillingItemSummary]:
     scope = unit_scope(session, actor, "billing:read")
-    statement = select(BillingItem).where(BillingItem.organization_id == actor.organization_id)
+    statement = select(BillingItem).where(
+    BillingItem.organization_id == actor.organization_id,
+    visible_billing_items(),
+)
     if scope is not None:
         statement = statement.where(BillingItem.business_unit_id.in_(scope))
     if competence_month:
@@ -936,8 +948,10 @@ def list_exceptions(
 ) -> list[BillingExceptionResponse]:
     scope = unit_scope(session, actor, "billing:review")
     statement = select(BillingItem).where(
-        BillingItem.organization_id == actor.organization_id, BillingItem.status == "blocked"
-    )
+    BillingItem.organization_id == actor.organization_id,
+    BillingItem.status == "blocked",
+    visible_billing_items(),
+)
     if scope is not None:
         statement = statement.where(BillingItem.business_unit_id.in_(scope))
     if competence_month:
@@ -979,9 +993,10 @@ def billing_summary(
     scope = unit_scope(session, actor, "billing:read")
     competence = competence_date(competence_month)
     statement = select(BillingItem).where(
-        BillingItem.organization_id == actor.organization_id,
-        BillingItem.competence_month == competence,
-    )
+    BillingItem.organization_id == actor.organization_id,
+    BillingItem.competence_month == competence,
+    visible_billing_items(),
+)
     if scope is not None:
         statement = statement.where(BillingItem.business_unit_id.in_(scope))
     if business_unit_id:
@@ -1103,37 +1118,66 @@ def revalidate_item(
 @router.delete("/items/{item_id}")
 def delete_billing_item(
     item_id: uuid.UUID,
+    request: Request,
     session: SessionDep,
     actor: Annotated[ActorContext, Depends(require_permission("billing:review"))],
 ) -> dict:
-    item = session.get(BillingItem, item_id)
-    if item is None or item.organization_id != actor.organization_id:
+    item = session.scalar(
+        select(BillingItem).where(
+            BillingItem.id == item_id,
+            BillingItem.organization_id == actor.organization_id,
+        )
+    )
+    if item is None:
         raise HTTPException(status_code=404, detail="Cobrança não encontrada")
 
-    if (item.status or "").lower() not in {"draft", "pending", "ready", "blocked", "failed", "requested"}:
-        raise HTTPException(
-            status_code=409,
-            detail="Cobrança já emitida ou em emissão: use o cancelamento fiscal da NFS-e",
+    ensure_unit_access(session, actor, "billing:review", item.business_unit_id)
+
+    existing_removal = session.scalar(
+        select(BillingItemRemoval).where(
+            BillingItemRemoval.billing_item_id == item.id,
+            BillingItemRemoval.organization_id == actor.organization_id,
         )
+    )
+    if existing_removal is not None:
+        return {"deleted": True, "id": str(item_id)}
 
     issuance = getattr(item, "issuance", None)
+    if issuance is None:
+        issuance = session.scalar(
+            select(FiscalIssuance).where(FiscalIssuance.billing_item_id == item.id)
+        )
     if issuance is not None and (
-        getattr(issuance, "nfse_number", None) or getattr(issuance, "access_key", None)
+        getattr(issuance, "nfse_number", None)
+        or getattr(issuance, "access_key", None)
     ):
         raise HTTPException(
             status_code=409,
             detail="Cobrança com NFS-e autorizada: use o cancelamento fiscal da NFS-e",
         )
 
-    issuance = getattr(item, "issuance", None)
-    if issuance is not None and (
-        getattr(issuance, "nfse_number", None) or getattr(issuance, "access_key", None)
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="Cobrança com NFS-e autorizada: use o cancelamento fiscal da NFS-e",
+    session.add(
+        BillingItemRemoval(
+            billing_item_id=item.id,
+            organization_id=actor.organization_id,
+            removed_by_actor_id=actor.id,
+            correlation_id=request.state.correlation_id,
         )
-
-    session.delete(item)
+    )
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="billing.item.removed",
+        resource_type="billing_item",
+        resource_id=item.id,
+        before_state={"status": item.status, "removed": False},
+        after_state={"status": item.status, "removed": True},
+        event_type="billing.item.removed.v1",
+        event_payload={
+            "billing_item_id": str(item.id),
+            "organization_id": str(actor.organization_id),
+        },
+    )
     session.commit()
     return {"deleted": True, "id": str(item_id)}
