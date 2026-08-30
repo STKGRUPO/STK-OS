@@ -99,16 +99,59 @@ class XmlSigner:
             certificate.public_bytes(serialization.Encoding.DER)
         ).decode()
         payload = etree.tostring(root, xml_declaration=True, encoding="UTF-8")
-        logger.info(
-            "dps_signed",
-            extra={
-                "dps_id": inf.get("Id"),
-                "digest_value": digest,
-                "signed_sha256": hashlib.sha256(payload).hexdigest(),
-                "signed_bytes": len(payload),
-            },
+
+        # Autoverificacao: refaz digest e assinatura a partir do XML final.
+        check_root = etree.fromstring(payload)
+        check_inf = check_root.find(f"{{{NFSE}}}infDPS")
+        check_sig = check_root.find(f"{{{DS}}}Signature")
+        if check_inf is None or check_sig is None:
+            raise CertificateConfigurationError(
+                "XML final sem infDPS ou Signature para autoverificacao"
+            )
+
+        check_signed_info = check_sig.find(f"{{{DS}}}SignedInfo")
+        check_signature_value = check_sig.findtext(f"{{{DS}}}SignatureValue")
+        stored_digest = check_sig.findtext(
+            f"{{{DS}}}SignedInfo/{{{DS}}}Reference/{{{DS}}}DigestValue"
         )
-        logger.debug("dps_signed_xml_b64 %s", base64.b64encode(payload).decode())
+        if check_signed_info is None or not check_signature_value or not stored_digest:
+            raise CertificateConfigurationError(
+                "XML final com estrutura XMLDSIG incompleta"
+            )
+
+        recomputed_digest = base64.b64encode(
+            hashlib.sha1(  # noqa: S324
+                etree.tostring(check_inf, method="c14n"),
+                usedforsecurity=False,
+            ).digest()
+        ).decode()
+        digest_ok = recomputed_digest == stored_digest
+
+        try:
+            certificate.public_key().verify(  # type: ignore[union-attr]
+                base64.b64decode(check_signature_value),
+                etree.tostring(check_signed_info, method="c14n"),
+                padding.PKCS1v15(),
+                hashes.SHA1(),  # noqa: S303
+            )
+            signature_ok = True
+        except Exception:  # noqa: BLE001
+            signature_ok = False
+
+        # Os resultados ficam no texto porque o formatador atual nao mostra extra={...}.
+        logger.info(
+            "dps_signed dps_id=%s digest_ok=%s signature_ok=%s "
+            "digest_value=%s signed_sha256=%s signed_bytes=%s",
+            inf.get("Id"),
+            digest_ok,
+            signature_ok,
+            digest,
+            hashlib.sha256(payload).hexdigest(),
+            len(payload),
+        )
+
+        # TEMPORARIO: necessario somente para comparar o XML enviado com o XML funcional.
+        logger.info("dps_signed_xml_b64 %s", base64.b64encode(payload).decode())
         return payload
 
 
