@@ -17,7 +17,7 @@ class FiscalRuntime:
         token = (settings.fiscal_service_token or "").strip()
         if not token:
             try:
-        token = settings.fiscal_service_token_file.read_text(encoding="utf-8").strip()
+                token = settings.fiscal_service_token_file.read_text(encoding="utf-8").strip()
             except OSError as error:
                 raise RuntimeError("Token do serviço fiscal privado não provisionado") from error
         if not token:
