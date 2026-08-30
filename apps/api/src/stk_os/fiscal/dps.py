@@ -74,8 +74,12 @@ def build_dps(
     nacional = etree.SubElement(endereco, q("endNac"))
     add(nacional, "cMun", digits(customer["municipality_code"]))
     add(nacional, "CEP", digits(customer["postal_code"]))
-    add(endereco, "xLgr", customer["address_line"])
+    add(endereco, "xLgr", customer.get("address_line") or "Nao informado")
     add(endereco, "nro", rules.get("taker_address_number", "S/N"))
+    complemento = (customer.get("address_complement") or "").strip()
+    if complemento:
+        add(endereco, "xCpl", complemento)
+    add(endereco, "xBairro", (customer.get("district") or "").strip() or "Centro")
     serv = etree.SubElement(inf, q("serv"))
     loc = etree.SubElement(serv, q("locPrest"))
     add(loc, "cLocPrestacao", digits(issuer["municipality_code"]))
