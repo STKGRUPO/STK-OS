@@ -151,77 +151,31 @@ class SefinGateway:
         )
 
 
-class RemoteFiscalServiceGateway:
-    """Cliente do serviço fiscal privado; o backend nunca recebe o A1."""
+class LocalSigningGateway:
+    """Assina o DPS na própria API e transmite direto ao SEFIN via mTLS."""
 
-    def __init__(
-        self,
-        service_url: str,
-        token: str,
-        certificate_key_id: str,
-        *,
-        timeout: int = 60,
-    ):
-        parsed = urlparse(service_url)
-        if parsed.scheme != "https" or not parsed.hostname:
-            raise ValueError("STK_FISCAL_SERVICE_URL deve usar HTTPS")
-        self.service_url = service_url.rstrip("/")
-        self.token = token
-        self.certificate_key_id = certificate_key_id
-        self.timeout = timeout
-
-    def _call(self, path: str, payload: dict[str, object]) -> ProviderResult:
-        request = urllib.request.Request(  # noqa: S310 - URL HTTPS validada no construtor
-            f"{self.service_url}{path}",
-            data=json.dumps(payload).encode(),
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:  # noqa: S310
-                data = json.loads(response.read(4_000_000))
-        except (TimeoutError, urllib.error.URLError):
-            return ProviderResult(status="uncertain", error_code="FISCAL_SERVICE_UNAVAILABLE")
-        documents = tuple(
-            ProviderDocument(
-                document_type=str(item["document_type"]),
-                content_type=str(item["content_type"]),
-                content=base64.b64decode(str(item["content_b64"])),
-            )
-            for item in data.get("documents", [])
-        )
-        return ProviderResult(
-            status=data["status"],
-            http_status=data.get("http_status"),
-            nfse_number=data.get("nfse_number"),
-            access_key=data.get("access_key"),
-            provider_reference=data.get("provider_reference"),
-            error_code=data.get("error_code"),
-            detail=data.get("detail"),
-            signed_dps_sha256=data.get("signed_dps_sha256"),
-            documents=documents,
-        )
+    def __init__(self, transport: SefinGateway, signer, material):
+        self.transport = transport
+        self.signer = signer
+        self.material = material
 
     def issue(self, *, endpoint: str, dps_id: str, signed_xml: bytes) -> ProviderResult:
-        return self._call(
-            "/internal/v1/issue",
-            {
-                "endpoint": endpoint,
-                "dps_id": dps_id,
-                "certificate_key_id": self.certificate_key_id,
-                "unsigned_xml_b64": base64.b64encode(signed_xml).decode(),
-            },
+        signed = self.signer.sign(signed_xml, self.material)
+        result = self.transport.issue(endpoint=endpoint, dps_id=dps_id, signed_xml=signed)
+        import hashlib
+
+        return ProviderResult(
+            status=result.status,
+            http_status=result.http_status,
+            nfse_number=result.nfse_number,
+            access_key=result.access_key,
+            provider_reference=result.provider_reference,
+            error_code=result.error_code,
+            detail=result.detail,
+            signed_dps_sha256=hashlib.sha256(signed).hexdigest(),
+            documents=result.documents,
         )
 
     def reconcile(self, *, query_base_url: str, dps_id: str) -> ProviderResult:
-        return self._call(
-            "/internal/v1/reconcile",
-            {
-                "query_base_url": query_base_url,
-                "dps_id": dps_id,
-                "certificate_key_id": self.certificate_key_id,
-            },
+        return self.transport.reconcile(query_base_url=query_base_url, dps_id=dps_id)
         )
