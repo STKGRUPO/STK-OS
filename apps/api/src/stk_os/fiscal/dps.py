@@ -64,6 +64,30 @@ def dps_id(snapshot: dict[str, Any], series: int, number: int) -> str:
     )
 
 
+class FiscalConfigurationError(RuntimeError):
+    """Configuracao fiscal do emissor incompleta ou incoerente."""
+
+
+def validate_reg_trib(rules: dict) -> None:
+    """Bloqueia a emissao antes do POST, em vez de deixar a SEFIN validar por nos."""
+    op_simp_nac = str(rules.get("op_simp_nac") or "").strip()
+    if op_simp_nac not in {"1", "2", "3"}:
+        raise FiscalConfigurationError(
+            "Configuracao fiscal do emissor sem situacao no Simples Nacional "
+            "(opSimpNac). Preencha em Empresas do Grupo > Configuracao fiscal."
+        )
+    reg_ap_trib_sn = str(rules.get("reg_ap_trib_sn") or "").strip()
+    if op_simp_nac == "3" and reg_ap_trib_sn not in {"1", "2", "3"}:
+        raise FiscalConfigurationError(
+            "Emissor optante ME/EPP sem regime de apuracao no Simples Nacional "
+            "(regApTribSN) configurado."
+        )
+    if op_simp_nac != "3" and reg_ap_trib_sn:
+        raise FiscalConfigurationError(
+            "regApTribSN so pode ser informado para emissor optante ME/EPP."
+        )
+
+
 def build_dps(
     snapshot: dict[str, Any], *, series: int, number: int, issued_at: datetime
 ) -> tuple[bytes, str, FiscalDecision]:
@@ -89,11 +113,15 @@ def build_dps(
     prest = etree.SubElement(inf, q("prest"))
     add(prest, "CNPJ", digits(issuer["tax_id"]))
     reg = etree.SubElement(prest, q("regTrib"))
-    is_simple = rules.get("tax_regime") == "simples_nacional"
-    add(reg, "opSimpNac", rules.get("op_simp_nac", 3 if is_simple else 1))
-    if is_simple and rules.get("reg_ap_trib_sn"):
-        add(reg, "regApTribSN", rules["reg_ap_trib_sn"])
-    add(reg, "regEspTrib", rules.get("reg_esp_trib", 0))
+    # opSimpNac vem SOMENTE do cadastro fiscal do emissor. Sem default silencioso:
+    # quem valida a ausencia e validate_reg_trib(), antes de assinar.
+    op_simp_nac = str(rules.get("op_simp_nac") or "").strip()
+    add(reg, "opSimpNac", op_simp_nac)
+    reg_ap_trib_sn = str(rules.get("reg_ap_trib_sn") or "").strip()
+    # Fora de optante ME/EPP a tag nao pode existir no XML.
+    if op_simp_nac == "3" and reg_ap_trib_sn:
+        add(reg, "regApTribSN", reg_ap_trib_sn)
+    add(reg, "regEspTrib", str(rules.get("reg_esp_trib") or "0").strip() or "0")
     toma = etree.SubElement(inf, q("toma"))
     add(toma, "CNPJ", digits(customer["tax_id"]))
     add(toma, "xNome", customer["legal_name"])
