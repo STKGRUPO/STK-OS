@@ -1101,9 +1101,13 @@ def revalidate_item(
 
 
 @router.delete("/items/{item_id}", status_code=204)
-def delete_billing_item(item_id: uuid.UUID, session: Session = Depends(get_session)):
+def delete_billing_item(
+    item_id: uuid.UUID,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("billing:write"))],
+) -> Response:
     item = session.get(BillingItem, item_id)
-    if item is None:
+    if item is None or item.organization_id != actor.organization_id:
         raise HTTPException(status_code=404, detail="Cobrança não encontrada")
 
     if (item.status or "").lower() not in {"draft", "pending", "ready", "blocked", "failed"}:
