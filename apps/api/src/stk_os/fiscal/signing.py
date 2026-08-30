@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from lxml import etree
 
 DS = "http://www.w3.org/2000/09/xmldsig#"
 NFSE = "http://www.sped.fazenda.gov.br/nfse"
+logger = logging.getLogger(__name__)
 
 
 class CertificateConfigurationError(RuntimeError):
@@ -40,6 +43,14 @@ class XmlSigner:
         inf = root.find(f"{{{NFSE}}}infDPS")
         if inf is None or not inf.get("Id"):
             raise CertificateConfigurationError("DPS sem infDPS/Id para assinatura")
+        issuer_node = inf.find(f"{{{NFSE}}}prest/{{{NFSE}}}CNPJ")
+        issuer_cnpj = re.sub(r"\D", "", (issuer_node.text or "")) if issuer_node is not None else ""
+        subject_cnpjs = re.findall(r"\d{14}", certificate.subject.rfc4514_string())
+        if issuer_cnpj and subject_cnpjs and issuer_cnpj not in subject_cnpjs:
+            raise CertificateConfigurationError(
+                "O certificado A1 cadastrado nao pertence ao CNPJ emissor "
+                f"({issuer_cnpj}). Cadastre o e-CNPJ da propria empresa."
+            ) 
         # SHA-1 é exigido pelo comportamento XMLDSIG homologado do legado/SEFIN.
         digest = base64.b64encode(
             hashlib.sha1(etree.tostring(inf, method="c14n"), usedforsecurity=False).digest()
@@ -86,7 +97,18 @@ class XmlSigner:
         etree.SubElement(x509_data, f"{{{DS}}}X509Certificate").text = base64.b64encode(
             certificate.public_bytes(serialization.Encoding.DER)
         ).decode()
-        return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+        payload = etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+        logger.info(
+            "dps_signed",
+            extra={
+                "dps_id": inf.get("Id"),
+                "digest_value": digest,
+                "signed_sha256": hashlib.sha256(payload).hexdigest(),
+                "signed_bytes": len(payload),
+            },
+        )
+        logger.debug("dps_signed_xml_b64 %s", base64.b64encode(payload).decode())
+        return payload
 
 
 class MountedSecretResolver:
