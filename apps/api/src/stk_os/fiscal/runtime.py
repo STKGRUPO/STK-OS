@@ -14,10 +14,14 @@ class FiscalRuntime:
 
     def gateway_for(self, config: FiscalEstablishmentConfig) -> FiscalGateway:
         settings = get_settings()
-        try:
-            token = settings.fiscal_service_token_file.read_text(encoding="utf-8").strip()
-        except OSError as error:
-            raise RuntimeError("Token do serviço fiscal privado não provisionado") from error
+        token = (settings.fiscal_service_token or "").strip()
+        if not token:
+            try:
+        token = settings.fiscal_service_token_file.read_text(encoding="utf-8").strip()
+            except OSError as error:
+                raise RuntimeError("Token do serviço fiscal privado não provisionado") from error
+        if not token:
+            raise RuntimeError("Token do serviço fiscal privado não provisionado")
         return RemoteFiscalServiceGateway(
             settings.fiscal_service_url,
             token,
