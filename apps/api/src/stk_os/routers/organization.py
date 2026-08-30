@@ -872,3 +872,202 @@ def delete_establishment_certificate(
     )
     session.commit()
     return Response(status_code=204)
+
+
+_CATALOG_SELECT = text(
+    """
+    SELECT id, service_code, nbs_code, description,
+           default_iss_percent, status
+      FROM service_code_catalog
+     ORDER BY service_code
+    """
+)
+
+
+def _catalog_item(row) -> dict:
+    return {
+        "id": str(row.id),
+        "service_code": row.service_code,
+        "nbs_code": row.nbs_code,
+        "description": row.description,
+        "default_iss_percent": (
+            None if row.default_iss_percent is None else str(row.default_iss_percent)
+        ),
+        "status": row.status,
+    }
+
+
+@router.get("/service-codes")
+def list_service_codes(
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:read"))],
+) -> dict:
+    rows = session.execute(_CATALOG_SELECT).all()
+    return {"items": [_catalog_item(row) for row in rows]}
+
+
+@router.post("/service-codes", status_code=201)
+def create_service_code(
+    payload: dict,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> dict:
+    code = (payload.get("service_code") or "").strip()
+    if not code:
+        raise HTTPException(status_code=422, detail="service_code é obrigatório")
+    row = session.execute(
+        text(
+            """
+            INSERT INTO service_code_catalog
+                   (service_code, nbs_code, description, default_iss_percent, status)
+            VALUES (:code, :nbs, :description, :iss, :status)
+            ON CONFLICT (service_code) DO UPDATE
+                SET nbs_code = EXCLUDED.nbs_code,
+                    description = EXCLUDED.description,
+                    default_iss_percent = EXCLUDED.default_iss_percent,
+                    status = EXCLUDED.status,
+                    updated_at = now()
+            RETURNING id, service_code, nbs_code, description,
+                      default_iss_percent, status
+            """
+        ),
+        {
+            "code": code,
+            "nbs": payload.get("nbs_code"),
+            "description": payload.get("description"),
+            "iss": payload.get("default_iss_percent"),
+            "status": payload.get("status") or "active",
+        },
+    ).one()
+    session.commit()
+    return _catalog_item(row)
+
+
+@router.patch("/service-codes/{code_id}")
+def update_service_code(
+    code_id: uuid.UUID,
+    payload: dict,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> dict:
+    row = session.execute(
+        text(
+            """
+            UPDATE service_code_catalog
+               SET service_code = COALESCE(:code, service_code),
+                   nbs_code = :nbs,
+                   description = :description,
+                   default_iss_percent = :iss,
+                   status = COALESCE(:status, status),
+                   updated_at = now()
+             WHERE id = :id
+            RETURNING id, service_code, nbs_code, description,
+                      default_iss_percent, status
+            """
+        ),
+        {
+            "id": code_id,
+            "code": payload.get("service_code"),
+            "nbs": payload.get("nbs_code"),
+            "description": payload.get("description"),
+            "iss": payload.get("default_iss_percent"),
+            "status": payload.get("status"),
+        },
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Código de serviço não encontrado")
+    session.commit()
+    return _catalog_item(row)
+
+
+@router.get("/service-codes/{code_id}/rate")
+def get_service_code_rate(
+    code_id: uuid.UUID,
+    municipality_code: str,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:read"))],
+) -> dict:
+    digits = "".join(ch for ch in municipality_code if ch.isdigit())
+    row = session.execute(
+        text(
+            """
+            SELECT iss_percent, iss_retained_by_taker, source,
+                   legal_basis, confirmed_by, confirmed_at
+              FROM service_code_municipal_rates
+             WHERE service_code_id = :id AND municipality_code = :municipality
+            """
+        ),
+        {"id": code_id, "municipality": digits},
+    ).first()
+    if row is None:
+        return {
+            "service_code_id": str(code_id),
+            "municipality_code": digits,
+            "iss_percent": None,
+            "iss_retained_by_taker": None,
+            "confirmed": False,
+        }
+    return {
+        "service_code_id": str(code_id),
+        "municipality_code": digits,
+        "iss_percent": None if row.iss_percent is None else str(row.iss_percent),
+        "iss_retained_by_taker": row.iss_retained_by_taker,
+        "source": row.source,
+        "legal_basis": row.legal_basis,
+        "confirmed_by": row.confirmed_by,
+        "confirmed_at": row.confirmed_at.isoformat() if row.confirmed_at else None,
+        "confirmed": row.confirmed_at is not None,
+    }
+
+
+@router.post("/service-codes/{code_id}/rates", status_code=201)
+def upsert_service_code_rate(
+    code_id: uuid.UUID,
+    payload: dict,
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("organization:write"))],
+) -> dict:
+    digits = "".join(ch for ch in (payload.get("municipality_code") or "") if ch.isdigit())
+    if len(digits) != 7:
+        raise HTTPException(status_code=422, detail="municipality_code deve ter 7 dígitos (IBGE)")
+    row = session.execute(
+        text(
+            """
+            INSERT INTO service_code_municipal_rates
+                   (service_code_id, municipality_code, iss_percent,
+                    iss_retained_by_taker, source, legal_basis,
+                    confirmed_by, confirmed_at)
+            VALUES (:id, :municipality, :iss, :retained, 'manual',
+                    :legal_basis, :actor, now())
+            ON CONFLICT (service_code_id, municipality_code) DO UPDATE
+                SET iss_percent = EXCLUDED.iss_percent,
+                    iss_retained_by_taker = EXCLUDED.iss_retained_by_taker,
+                    legal_basis = EXCLUDED.legal_basis,
+                    confirmed_by = EXCLUDED.confirmed_by,
+                    confirmed_at = now(),
+                    updated_at = now()
+            RETURNING iss_percent, iss_retained_by_taker, source,
+                      legal_basis, confirmed_by, confirmed_at
+            """
+        ),
+        {
+            "id": code_id,
+            "municipality": digits,
+            "iss": payload.get("iss_percent"),
+            "retained": bool(payload.get("iss_retained_by_taker")),
+            "legal_basis": payload.get("legal_basis"),
+            "actor": actor.display_name,
+        },
+    ).one()
+    session.commit()
+    return {
+        "service_code_id": str(code_id),
+        "municipality_code": digits,
+        "iss_percent": None if row.iss_percent is None else str(row.iss_percent),
+        "iss_retained_by_taker": row.iss_retained_by_taker,
+        "source": row.source,
+        "legal_basis": row.legal_basis,
+        "confirmed_by": row.confirmed_by,
+        "confirmed_at": row.confirmed_at.isoformat() if row.confirmed_at else None,
+        "confirmed": True,
+    }
