@@ -66,3 +66,20 @@ def load_pem_pair(content: bytes, password: str) -> tuple[bytes, bytes]:
 
 def new_key_id(establishment_id: uuid.UUID, environment: str) -> str:
     return f"est-{establishment_id.hex[:12]}-{environment}"
+
+
+def ssl_context_from_pfx(content: bytes, password: str) -> "ssl.SSLContext":
+    """Cria SSLContext mTLS a partir do .pfx, com PEM temporário em disco efêmero."""
+    import ssl
+    import tempfile
+    from pathlib import Path
+
+    cert_pem, key_pem = load_pem_pair(content, password)
+    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    with tempfile.TemporaryDirectory() as tmp:
+        cert_file = Path(tmp) / "cert.pem"
+        key_file = Path(tmp) / "key.pem"
+        cert_file.write_bytes(cert_pem)
+        key_file.write_bytes(key_pem)
+        context.load_cert_chain(certfile=str(cert_file), keyfile=str(key_file))
+    return context
