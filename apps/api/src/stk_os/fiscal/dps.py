@@ -47,22 +47,6 @@ def xml_text(value: object) -> str:
     return text.strip()
 
 
-_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
-
-def xml_text(value: object) -> str:
-    """Normaliza texto para o validador da SEFIN (E0714).
-
-    Remove CR, LF, tabulacao, caracteres de controle e espacos repetidos.
-    """
-    text = str(value if value is not None else "")
-    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-    text = text.replace("\t", " ")
-    text = _CONTROL_CHARS.sub("", text)
-    text = re.sub(r"\s{2,}", " ", text)
-    return text.strip()
-
-
 def add(parent: etree._Element, name: str, value: object) -> etree._Element:
     child = etree.SubElement(parent, q(name))
     child.text = xml_text(value)
