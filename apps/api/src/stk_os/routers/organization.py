@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import logging
 import unicodedata
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -47,6 +48,7 @@ from stk_os.schemas import (
 from stk_os.security import canonical_hash
 
 router = APIRouter(prefix="/organization", tags=["organization"])
+logger = logging.getLogger(__name__)
 
 
 def code_base(value: str) -> str:
@@ -90,6 +92,7 @@ def flush_or_conflict(session: SessionDep, detail: str) -> None:
         session.flush()
     except IntegrityError as error:
         session.rollback()
+        logger.warning("integrity_error detail=%s error=%s", detail, error)
         raise HTTPException(status_code=409, detail=detail) from error
 
 
@@ -595,12 +598,10 @@ def upsert_fiscal_config(
             provider="sefin_nacional",
         )
         session.add(config)
-    for field in (
+   for field in (
         "emission_method",
         "endpoint",
         "query_base_url",
-        "certificate_secret_ref",
-        "certificate_key_id",
         "municipality_code",
         "series",
         "next_dps_number",
@@ -608,8 +609,14 @@ def upsert_fiscal_config(
         "nbs_code",
         "fiscal_rules",
         "status",
-     ):
+    ):
         setattr(config, field, getattr(command, field))
+    # O certificado A1 é resolvido pelo CNPJ em fiscal_certificates: a tela não envia
+    # essas referências e salvar a configuracao nao pode apaga-las.
+    if not config.certificate_secret_ref:
+        config.certificate_secret_ref = "db://fiscal_certificates"
+    if not config.certificate_key_id:
+        config.certificate_key_id = str(establishment.id)
     flush_or_conflict(session, "Configuração fiscal já existe para este ambiente")
     response = fiscal_config_response(config)
     record_change(
