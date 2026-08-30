@@ -186,8 +186,8 @@ class FiscalConfigUpsert(BaseModel):
     emission_method: Literal["api_a1", "blocked"] = "api_a1"
     endpoint: str = Field(min_length=12, max_length=500, pattern=r"^https://")
     query_base_url: str = Field(min_length=12, max_length=500, pattern=r"^https://")
-    certificate_secret_ref: str = Field(min_length=2, max_length=500)
-    certificate_key_id: str = Field(min_length=2, max_length=255)
+    certificate_secret_ref: str | None = Field(default=None)
+    certificate_key_id: str | None = Field(default=None)
     municipality_code: str = Field(pattern=r"^\d{7}$")
     series: int = Field(ge=1, le=99999)
     next_dps_number: int = Field(ge=1)
