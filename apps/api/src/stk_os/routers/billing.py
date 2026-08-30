@@ -1110,10 +1110,19 @@ def delete_billing_item(
     if item is None or item.organization_id != actor.organization_id:
         raise HTTPException(status_code=404, detail="Cobrança não encontrada")
 
-    if (item.status or "").lower() not in {"draft", "pending", "ready", "blocked", "failed"}:
+    if (item.status or "").lower() not in {"draft", "pending", "ready", "blocked", "failed", "requested"}:
         raise HTTPException(
             status_code=409,
             detail="Cobrança já emitida ou em emissão: use o cancelamento fiscal da NFS-e",
+        )
+
+    issuance = getattr(item, "issuance", None)
+    if issuance is not None and (
+        getattr(issuance, "nfse_number", None) or getattr(issuance, "access_key", None)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Cobrança com NFS-e autorizada: use o cancelamento fiscal da NFS-e",
         )
 
     session.delete(item)
