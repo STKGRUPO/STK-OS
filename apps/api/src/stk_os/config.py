@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     fiscal_document_root: Path = Path(".stk-private/fiscal-documents")
     fiscal_service_url: str = "https://fiscal-service.internal"
     fiscal_service_token_file: Path = Path("/run/secrets/stk-fiscal-service/token")
+    fiscal_service_token: str = ""
     fiscal_timeout_seconds: int = Field(default=60, ge=5, le=120)
 
     @field_validator("database_url")
