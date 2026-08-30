@@ -92,15 +92,41 @@ from pathlib import Path
 from stk_os.fiscal.signing import CertificateConfigurationError, CertificateMaterial
 
 
+def _load_stored_material(session, establishment_config) -> tuple[bytes, str]:
+    """Busca o .pfx e a senha cifrados em fiscal_certificates e descriptografa."""
+    from sqlalchemy import select
+    from stk_os.models import FiscalCertificate  # ajuste se o nome do modelo for outro
+
+    certificate = session.scalar(
+        select(FiscalCertificate)
+        .where(
+            FiscalCertificate.establishment_id == establishment_config.establishment_id,
+            FiscalCertificate.environment == establishment_config.environment,
+            FiscalCertificate.status == "active",
+        )
+        .order_by(FiscalCertificate.created_at.desc())
+        .limit(1)
+    )
+    if certificate is None:
+        raise CertificateConfigurationError(
+            "Nenhum certificado A1 ativo para este emissor e ambiente"
+        )
+    pfx = decrypt(certificate.material_ciphertext, certificate.material_nonce)
+    password = decrypt(certificate.password_ciphertext, certificate.password_nonce).decode()
+    return pfx, password
+
+
 def material_for(session, establishment_config) -> CertificateMaterial:
     """Devolve cert/chave em PEM, apenas em memória, para assinar o DPS."""
-    certificate_pem, private_key_pem = load_pem_pair(session, establishment_config)
+    pfx, password = _load_stored_material(session, establishment_config)
+    certificate_pem, private_key_pem = load_pem_pair(pfx, password)
     return CertificateMaterial(certificate_pem, private_key_pem, None)
 
 
 def ssl_context_for(session, establishment_config) -> ssl.SSLContext:
     """Cria o SSLContext mTLS a partir do A1 descriptografado."""
-    certificate_pem, private_key_pem = load_pem_pair(session, establishment_config)
+    pfx, password = _load_stored_material(session, establishment_config)
+    certificate_pem, private_key_pem = load_pem_pair(pfx, password)
     context = ssl.create_default_context()
     with tempfile.TemporaryDirectory() as tmp:
         chain = Path(tmp) / "client.pem"
