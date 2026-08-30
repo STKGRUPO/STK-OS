@@ -9,9 +9,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 from urllib.parse import quote, urlparse
-from stk_os.fiscal.dps import validate_reg_trib
-
-        validate_reg_trib(snapshot.get("fiscal_rules") or {})
+from stk_os.fiscal.dps import build_dps, validate_reg_trib
 
 ProviderStatus = Literal["completed", "rejected", "not_found", "uncertain", "external_unavailable"]
 
