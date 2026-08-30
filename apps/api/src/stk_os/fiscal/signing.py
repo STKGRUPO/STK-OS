@@ -43,6 +43,15 @@ class XmlSigner:
         inf = root.find(f"{{{NFSE}}}infDPS")
         if inf is None or not inf.get("Id"):
             raise CertificateConfigurationError("DPS sem infDPS/Id para assinatura")
+            
+        issuer_node = inf.find(f"{{{NFSE}}}prest/{{{NFSE}}}CNPJ")
+        issuer_cnpj = re.sub(r"\D", "", (issuer_node.text or "")) if issuer_node is not None else ""
+        subject_cnpjs = re.findall(r"\d{14}", certificate.subject.rfc4514_string())
+        if issuer_cnpj and subject_cnpjs and issuer_cnpj not in subject_cnpjs:
+            raise CertificateConfigurationError(
+                "O certificado A1 cadastrado nao pertence ao CNPJ emissor "
+                f"({issuer_cnpj}). Cadastre o e-CNPJ da propria empresa."
+            )
         issuer_node = inf.find(f"{{{NFSE}}}prest/{{{NFSE}}}CNPJ")
         issuer_cnpj = re.sub(r"\D", "", (issuer_node.text or "")) if issuer_node is not None else ""
         subject_cnpjs = re.findall(r"\d{14}", certificate.subject.rfc4514_string())
