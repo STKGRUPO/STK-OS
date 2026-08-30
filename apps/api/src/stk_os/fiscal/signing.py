@@ -44,7 +44,7 @@ class XmlSigner:
         digest = base64.b64encode(
             hashlib.sha1(etree.tostring(inf, method="c14n"), usedforsecurity=False).digest()
         ).decode()
-        signature = etree.Element(f"{{{DS}}}Signature", nsmap={"ds": DS})
+        signature = etree.Element(f"{{{DS}}}Signature", nsmap={None: DS})
         signed_info = etree.SubElement(signature, f"{{{DS}}}SignedInfo")
         etree.SubElement(
             signed_info,
