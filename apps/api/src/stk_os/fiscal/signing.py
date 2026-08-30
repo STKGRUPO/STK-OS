@@ -20,6 +20,14 @@ logger = logging.getLogger(__name__)
 class CertificateConfigurationError(RuntimeError):
     pass
 
+def c14n(element) -> bytes:
+    """Canonicaliza C14N 1.0 sem o artefato xmlns="" que o lxml injeta em subarvores.
+
+    Serializar e reparsear o elemento fixa as declaracoes de namespace no proprio
+    elemento, produzindo os mesmos bytes que .NET/Java/SEFIN produzem.
+    """
+    isolated = etree.fromstring(etree.tostring(element))
+    return etree.tostring(isolated, method="c14n", with_comments=False)
 
 @dataclass(frozen=True)
 class CertificateMaterial:
@@ -54,7 +62,7 @@ class XmlSigner:
             )
         # SHA-1 é exigido pelo comportamento XMLDSIG homologado do legado/SEFIN.
         digest = base64.b64encode(
-            hashlib.sha1(etree.tostring(inf, method="c14n"), usedforsecurity=False).digest()
+            hashlib.sha1(c14n(inf), usedforsecurity=False).digest()
         ).decode()
         signature = etree.Element(f"{{{DS}}}Signature", nsmap={None: DS})
         signed_info = etree.SubElement(signature, f"{{{DS}}}SignedInfo")
@@ -86,9 +94,9 @@ class XmlSigner:
             Algorithm="http://www.w3.org/2000/09/xmldsig#sha1",
         )
         etree.SubElement(reference, f"{{{DS}}}DigestValue").text = digest
-        # Canonicaliza SignedInfo já no contexto final do documento (namespace default incluso).
+        # Canonicaliza SignedInfo sem o artefato xmlns="" do lxml (causa do E0714).
         root.append(signature)
-        signed = etree.tostring(signed_info, method="c14n")
+        signed = c14n(signed_info)
         value = private_key.sign(signed, padding.PKCS1v15(), hashes.SHA1())  # noqa: S303
         etree.SubElement(signature, f"{{{DS}}}SignatureValue").text = base64.b64encode(
             value
@@ -121,7 +129,7 @@ class XmlSigner:
 
         recomputed_digest = base64.b64encode(
             hashlib.sha1(  # noqa: S324
-                etree.tostring(check_inf, method="c14n"),
+                c14n(check_inf),
                 usedforsecurity=False,
             ).digest()
         ).decode()
@@ -130,7 +138,7 @@ class XmlSigner:
         try:
             certificate.public_key().verify(  # type: ignore[union-attr]
                 base64.b64decode(check_signature_value),
-                etree.tostring(check_signed_info, method="c14n"),
+                c14n(check_signed_info),
                 padding.PKCS1v15(),
                 hashes.SHA1(),  # noqa: S303
             )
