@@ -167,17 +167,8 @@ def build_dps(
             # Preservado do legado; o Gate A deve validar o mapeamento agregado.
             add(federal, "vRetCSLL", f"{decision.social_retido:.2f}")
     total = etree.SubElement(trib, q("totTrib"))
-    op_simp_nac = rules.get("op_simp_nac")
-    if op_simp_nac in (None, ""):
-        raise FiscalConfigurationError(
-            "Configuracao fiscal do emissor sem situacao no Simples Nacional (opSimpNac)."
-        )
-    add(reg_trib, "opSimpNac", str(int(op_simp_nac)))
-    if int(op_simp_nac) == 3:
-        reg_ap = rules.get("reg_ap_trib_sn")
-        if reg_ap in (None, ""):
-            raise FiscalConfigurationError(
-                "Emissor ME/EPP no Simples Nacional exige regApTribSN na configuracao fiscal."
-            )
-        add(reg_trib, "regApTribSN", str(int(reg_ap)))
-    add(reg_trib, "regEspTrib", str(int(rules.get("reg_esp_trib") or 0)))
+    add(total, "indTotTrib", "0")
+    xml_bytes = etree.tostring(
+        root, xml_declaration=True, encoding="UTF-8", standalone=False
+    )
+    return xml_bytes, identifier, decision
