@@ -777,6 +777,24 @@ class BillingItem(Base):
     )
 
 
+class BillingItemRemoval(Base):
+    __tablename__ = "billing_item_removals"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    billing_item_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("billing_items.id"), unique=True
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"))
+    removed_by_actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("actors.id"))
+    reason: Mapped[str] = mapped_column(
+        Text, default="Removida manualmente no faturamento"
+    )
+    correlation_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    removed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class BillingRunContract(Base):
     __tablename__ = "billing_run_contracts"
     __table_args__ = (
