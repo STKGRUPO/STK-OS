@@ -1098,3 +1098,20 @@ def revalidate_item(
     return BillingItemDetail(
         **item_summary(session, item).model_dump(), snapshot=item.snapshot, history=[]
     )
+
+
+@router.delete("/items/{item_id}", status_code=204)
+def delete_billing_item(item_id: uuid.UUID, session: Session = Depends(get_session)):
+    item = session.get(BillingItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Cobrança não encontrada")
+
+    if (item.status or "").lower() not in {"draft", "pending", "ready", "blocked", "failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Cobrança já emitida ou em emissão: use o cancelamento fiscal da NFS-e",
+        )
+
+    session.delete(item)
+    session.commit()
+    return Response(status_code=204)
