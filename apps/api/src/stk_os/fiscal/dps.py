@@ -20,9 +20,27 @@ def q(name: str) -> str:
     return f"{{{NS}}}{name}"
 
 
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def xml_text(value: object) -> str:
+    """Normaliza texto para o validador da SEFIN (E0714).
+
+    Remove CR, caracteres de controle e espaços repetidos. `xDescServ` aceita
+    quebra de linha, mas nao aceita CR nem controle; por seguranca a quebra
+    tambem e convertida em espaco simples.
+    """
+    text = str(value if value is not None else "")
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    text = text.replace("\t", " ")
+    text = _CONTROL_CHARS.sub("", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
+
+
 def add(parent: etree._Element, name: str, value: object) -> etree._Element:
     child = etree.SubElement(parent, q(name))
-    child.text = str(value)
+    child.text = xml_text(value)
     return child
 
 
