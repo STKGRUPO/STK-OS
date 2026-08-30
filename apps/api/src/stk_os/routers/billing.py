@@ -1125,6 +1125,15 @@ def delete_billing_item(
             detail="Cobrança com NFS-e autorizada: use o cancelamento fiscal da NFS-e",
         )
 
+    issuance = getattr(item, "issuance", None)
+    if issuance is not None and (
+        getattr(issuance, "nfse_number", None) or getattr(issuance, "access_key", None)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Cobrança com NFS-e autorizada: use o cancelamento fiscal da NFS-e",
+        )
+
     session.delete(item)
     session.commit()
     return {"deleted": True, "id": str(item_id)}
