@@ -63,6 +63,8 @@ class BillingItemSummary(BaseModel):
     contract_number: str
     contract_version_id: uuid.UUID | None
     contract_version_number: int | None
+    service_name: str | None = None
+    service_description: str | None = None
     competence_month: str
     business_unit_id: uuid.UUID
     business_unit_name: str
@@ -93,6 +95,8 @@ class BillingHistoryEvent(BaseModel):
 class BillingItemDetail(BillingItemSummary):
     snapshot: dict[str, Any]
     history: list[BillingHistoryEvent]
+    service_name: str | None = None
+    service_description: str | None = None
 
 
 class BillingExceptionResponse(BaseModel):
