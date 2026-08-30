@@ -16,7 +16,7 @@ from stk_os.commands import begin_command, complete_command, record_change
 from stk_os.config import get_settings
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
-from stk_os.fiscal.dps import build_dps
+from stk_os.fiscal.dps import build_dps, validate_reg_trib
 from stk_os.fiscal.provider import ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
 from stk_os.fiscal_schemas import (
@@ -388,6 +388,8 @@ def transmit_existing(
     if config is None:
         raise HTTPException(status_code=422, detail="Configuração fiscal não encontrada")
     issued_at = datetime.fromisoformat(str(issuance.snapshot["issued_at"]))
+    # Snapshot antigo com regime incoerente nao pode ir para a SEFIN.
+    validate_reg_trib(issuance.snapshot.get("fiscal_rules") or {})
     unsigned, identifier, _decision = build_dps(
         issuance.snapshot,
         series=issuance.series,
@@ -505,6 +507,22 @@ def issue_billing_item(
         )
         session.commit()
         raise HTTPException(status_code=422, detail="Emissor sem configuração fiscal ativa")
+    # Bloqueia configuracao fiscal incompleta/incoerente antes de montar XML,
+    # antes de consumir numero de DPS e antes de qualquer POST na SEFIN.
+    try:
+        validate_reg_trib(config.fiscal_rules or {})
+    except Exception as error:  # FiscalConfigurationError
+        persist_exception(
+            session,
+            actor,
+            request.state.correlation_id,
+            issuance_id=None,
+            category="validation",
+            code="FISCAL_CONFIG_INVALID",
+            detail=str(error),
+        )
+        session.commit()
+        raise HTTPException(status_code=422, detail=str(error)) from error
     issued_at = datetime.now(UTC)
     try:
         snapshot = build_fiscal_snapshot(session, item, config, issued_at=issued_at)
