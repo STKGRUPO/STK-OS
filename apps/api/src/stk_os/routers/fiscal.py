@@ -29,6 +29,7 @@ from stk_os.fiscal_schemas import (
 )
 from stk_os.models import (
     BillingItem,
+    BillingItemRemoval,
     BusinessUnit,
     ClientService,
     ClientServiceOccurrence,
@@ -60,10 +61,14 @@ def get_item(
     session: Session, actor: ActorContext, item_id: uuid.UUID, permission: str
 ) -> BillingItem:
     item = session.scalar(
-        select(BillingItem).where(
-            BillingItem.id == item_id, BillingItem.organization_id == actor.organization_id
-        )
+    select(BillingItem).where(
+        BillingItem.id == item_id,
+        BillingItem.organization_id == actor.organization_id,
+        ~select(BillingItemRemoval.id).where(
+            BillingItemRemoval.billing_item_id == BillingItem.id
+        ).exists(),
     )
+)
     if item is None:
         raise HTTPException(status_code=404, detail="Item faturável não encontrado")
     ensure_unit_access(session, actor, permission, item.business_unit_id)
