@@ -138,3 +138,64 @@ def ssl_context_for(session, establishment_config) -> ssl.SSLContext:
                 "Certificado A1 inválido ou senha incorreta"
             ) from error
     return context
+
+
+import ssl
+import tempfile
+from pathlib import Path
+
+from sqlalchemy import select
+from sqlalchemy import text
+
+from stk_os.fiscal.signing import CertificateConfigurationError, CertificateMaterial
+
+_CERTIFICATE_QUERY = text(
+    """
+    SELECT material_ciphertext, material_nonce,
+           password_ciphertext, password_nonce
+      FROM public.fiscal_certificates
+     WHERE establishment_id = :establishment_id
+       AND status = 'active'
+       AND (environment = :environment OR environment IS NULL)
+       AND material_ciphertext IS NOT NULL
+       AND password_ciphertext IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 1
+    """
+)
+
+
+def _load_stored_material(session, establishment_config) -> tuple[bytes, str]:
+    """Busca o .pfx e a senha cifrados em fiscal_certificates e descriptografa."""
+    from stk_os.models import FiscalCertificate  # ajuste se o nome do modelo for outro
+
+    certificate = session.scalar(
+        select(FiscalCertificate)
+        .where(
+            FiscalCertificate.establishment_id == establishment_config.establishment_id,
+            FiscalCertificate.environment == establishment_config.environment,
+            FiscalCertificate.status == "active",
+        )
+        .order_by(FiscalCertificate.created_at.desc())
+        .limit(1)
+    )
+    if certificate is None:
+    row = session.execute(
+        _CERTIFICATE_QUERY,
+        {
+            "establishment_id": establishment_config.establishment_id,
+            "environment": establishment_config.environment,
+        },
+    ).first()
+    if row is None:
+        raise CertificateConfigurationError(
+            "Nenhum certificado A1 ativo para este emissor e ambiente"
+        )
+    pfx = decrypt(certificate.material_ciphertext, certificate.material_nonce)
+    password = decrypt(certificate.password_ciphertext, certificate.password_nonce).decode()
+    pfx = decrypt(bytes(row[0]), bytes(row[1]))
+    password = decrypt(bytes(row[2]), bytes(row[3])).decode()
+    return pfx, password
+
+
+    return context
