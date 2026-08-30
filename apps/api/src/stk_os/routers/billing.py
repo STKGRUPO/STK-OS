@@ -274,6 +274,40 @@ def snapshot_for(
     }
 
 
+def service_labels(item: BillingItem, version: ContractVersion | None) -> tuple[str | None, str | None]:
+    """Extrai nome/descricao do servico a partir do snapshot ja gravado no item."""
+    snapshot = item.snapshot if isinstance(item.snapshot, dict) else {}
+
+    services = snapshot.get("services")
+    if isinstance(services, list):
+        actives = [
+            entry
+            for entry in services
+            if isinstance(entry, dict) and entry.get("is_active") is not False
+        ]
+        pool = actives or [entry for entry in services if isinstance(entry, dict)]
+        if pool:
+            first = pool[0]
+            name = first.get("product_name") or first.get("description")
+            description = first.get("description")
+            if len(pool) > 1 and name:
+                name = f"{name} (+{len(pool) - 1})"
+            if name:
+                return name, description
+
+    # Servico pontual / avulso: o snapshot pode trazer um unico servico solto.
+    single = snapshot.get("service")
+    if isinstance(single, dict):
+        name = single.get("product_name") or single.get("name") or single.get("description")
+        if name:
+            return name, single.get("description")
+
+    if version is not None and getattr(version, "invoice_description", None):
+        return version.invoice_description, version.invoice_description
+
+    return None, None
+
+
 def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
     contract = session.get(Contract, item.contract_id) if item.contract_id else None
     version = (
@@ -286,6 +320,7 @@ def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
         if item.issuer_establishment_id
         else None
     )
+    service_name, service_description = service_labels(item, version)
     return BillingItemSummary(
         id=item.id,
         created_by_run_id=item.created_by_run_id,
@@ -296,6 +331,8 @@ def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
         contract_number=contract.internal_number if contract else "Sem contrato",
         contract_version_id=item.contract_version_id,
         contract_version_number=version.version_number if version else None,
+        service_name=service_name,
+        service_description=service_description,
         competence_month=competence_label(item.competence_month),
         business_unit_id=item.business_unit_id,
         business_unit_name=unit.name if unit else "Unidade indisponível",
