@@ -16,7 +16,7 @@ from stk_os.commands import begin_command, complete_command, record_change
 from stk_os.config import get_settings
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
-from stk_os.fiscal.dps import build_dps, validate_reg_trib
+from stk_os.fiscal.dps import build_dps, validate_reg_trib, FiscalConfigurationError
 from stk_os.fiscal.provider import ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
 from stk_os.fiscal_schemas import (
@@ -389,7 +389,11 @@ def transmit_existing(
         raise HTTPException(status_code=422, detail="Configuração fiscal não encontrada")
     issued_at = datetime.fromisoformat(str(issuance.snapshot["issued_at"]))
     # Snapshot antigo com regime incoerente nao pode ir para a SEFIN.
-    validate_reg_trib(issuance.snapshot.get("fiscal_rules") or {})
+    # Erro de cadastro tem de virar 422 legivel, nunca 500.
+    try:
+        validate_reg_trib(issuance.snapshot.get("fiscal_rules") or {})
+    except FiscalConfigurationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     unsigned, identifier, _decision = build_dps(
         issuance.snapshot,
         series=issuance.series,
