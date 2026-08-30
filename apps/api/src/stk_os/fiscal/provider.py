@@ -178,4 +178,4 @@ class LocalSigningGateway:
 
     def reconcile(self, *, query_base_url: str, dps_id: str) -> ProviderResult:
         return self.transport.reconcile(query_base_url=query_base_url, dps_id=dps_id)
-        )
+
