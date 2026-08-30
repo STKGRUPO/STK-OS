@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Any
 
@@ -11,6 +12,20 @@ from stk_os.fiscal.engine import FiscalDecision, calculate
 
 NS = "http://www.sped.fazenda.gov.br/nfse"
 
+SP_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+def emission_timestamp() -> str:
+    """Data/hora de emissão do DPS no fuso oficial, com margem de segurança.
+
+    A SEFIN rejeita (E0008) qualquer dhEmi posterior ao instante em que ela
+    recebe o arquivo. Recuamos alguns segundos para absorver diferença de
+    relógio entre o Railway e o servidor da SEFIN.
+    """
+    SubElement(inf, "dhEmi").text = emission_timestamp()
+    SubElement(inf, "dCompet").text = str(service_date)
+    return now.replace(microsecond=0).isoformat()
+    
 
 def digits(value: object) -> str:
     return re.sub(r"\D", "", str(value or ""))
