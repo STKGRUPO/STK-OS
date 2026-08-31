@@ -20,6 +20,7 @@ from stk_os.config import get_settings
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
 from stk_os.fiscal.dps import build_dps, validate_reg_trib, FiscalConfigurationError
+from stk_os.fiscal.dps import build_dps, validate_reg_trib, validate_tot_trib
 from stk_os.fiscal.provider import ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
 from stk_os.fiscal.sequence import (
