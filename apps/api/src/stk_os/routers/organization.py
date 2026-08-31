@@ -15,6 +15,7 @@ from stk_os.commands import record_change
 from stk_os.database import SessionDep
 from stk_os.dependencies import ActorDep, current_actor, require_permission
 from stk_os.fiscal import certificate_vault
+from stk_os.fiscal.sequence import highest_reserved_number
 from stk_os import schemas
 from stk_os.models import (
     AuditEvent,
@@ -590,6 +591,7 @@ def upsert_fiscal_config(
         .where(FiscalEstablishmentConfig.organization_id == actor.organization_id)
     ).one_or_none()
     before = fiscal_config_response(config).model_dump(mode="json") if config else None
+    is_new_config = config is None
     if config is None:
         config = FiscalEstablishmentConfig(
             organization_id=actor.organization_id,
@@ -604,7 +606,6 @@ def upsert_fiscal_config(
         "query_base_url",
         "municipality_code",
         "series",
-        "next_dps_number",
         "service_code",
         "nbs_code",
         "fiscal_rules",
@@ -613,6 +614,17 @@ def upsert_fiscal_config(
         setattr(config, field, getattr(command, field))
     # O certificado A1 é resolvido pelo CNPJ em fiscal_certificates: a tela não envia
     # essas referências e salvar a configuracao nao pode apaga-las.
+    if command.next_dps_number is not None:
+        historic = highest_reserved_number(session, config)
+        if historic > 0 or is_new_config is False:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "A sequência da DPS é controlada pelo motor fiscal e não pode ser "
+                    "alterada aqui. Use o procedimento administrativo de sequência."
+                ),
+            )
+        config.next_dps_number = int(command.next_dps_number)
     if not config.certificate_secret_ref:
         config.certificate_secret_ref = "db://fiscal_certificates"
     if not config.certificate_key_id:
