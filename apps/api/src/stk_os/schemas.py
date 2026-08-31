@@ -190,7 +190,9 @@ class FiscalConfigUpsert(BaseModel):
     certificate_key_id: str | None = Field(default=None)
     municipality_code: str = Field(pattern=r"^\d{7}$")
     series: int = Field(ge=1, le=99999)
-    next_dps_number: int = Field(ge=1)
+    # Semente aceita apenas na criação do emissor (histórico anterior fora da
+    # plataforma). Configuração existente ignora este campo por completo.
+    next_dps_number: int | None = Field(default=None, ge=1)
     service_code: str = Field(min_length=1, max_length=20)
     nbs_code: str = Field(min_length=1, max_length=20)
     fiscal_rules: dict[str, object] = {}
