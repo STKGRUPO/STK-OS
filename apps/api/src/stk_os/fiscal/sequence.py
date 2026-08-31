@@ -44,3 +44,26 @@ def reserve_dps_number(session: Session, config: FiscalEstablishmentConfig) -> i
     session.add(locked)
     session.flush()
     return number
+
+
+def sync_dps_sequence(session: Session, config_id: uuid.UUID) -> tuple[int, int, int]:
+    """Nivela next_dps_number ao histórico, sem criar DPS e sem tocar na SEFIN.
+
+    Retorna (valor_anterior, valor_novo, maior_dps_number). Nunca reduz o
+    contador: aplica next = max(next, MAX(dps_number) + 1) sob FOR UPDATE.
+    """
+    locked = session.scalar(
+        select(FiscalEstablishmentConfig)
+        .where(FiscalEstablishmentConfig.id == config_id)
+        .with_for_update()
+    )
+    if locked is None:
+        raise RuntimeError("Configuração fiscal não encontrada para sincronizar a sequência")
+    historic = highest_reserved_number(session, locked)
+    previous = int(locked.next_dps_number or 1)
+    updated = max(previous, historic + 1)
+    locked.next_dps_number = updated
+    session.add(locked)
+    session.flush()
+    return previous, updated, historic
+    
