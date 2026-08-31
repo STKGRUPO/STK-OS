@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any
@@ -19,6 +22,7 @@ from stk_os.dependencies import require_permission
 from stk_os.fiscal.dps import build_dps, validate_reg_trib, FiscalConfigurationError
 from stk_os.fiscal.provider import ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
+from stk_os.fiscal.sequence import highest_reserved_number, reserve_dps_number
 from stk_os.fiscal_schemas import (
     FiscalAttemptResponse,
     FiscalDocumentResponse,
@@ -542,8 +546,7 @@ def issue_billing_item(
         )
         session.commit()
         raise
-    number = config.next_dps_number
-    config.next_dps_number += 1
+    number = reserve_dps_number(session, config)
     identifier = (
         "DPS"
         + config.municipality_code
@@ -572,12 +575,39 @@ def issue_billing_item(
         session.flush()
     except IntegrityError as error:
         session.rollback()
+        constraint = getattr(getattr(error, "orig", None), "diag", None)
+        constraint_name = getattr(constraint, "constraint_name", None) or "desconhecida"
+        logger.error(
+            "fiscal_integrity_error constraint=%s billing_item_id=%s "
+            "establishment_config_id=%s environment=%s series=%s dps_number=%s "
+            "dps_id=%s correlation_id=%s",
+            constraint_name,
+            item.id,
+            config.id,
+            config.environment,
+            config.series,
+            number,
+            identifier,
+            request.state.correlation_id,
+        )
         existing = session.scalar(
             select(FiscalIssuance).where(FiscalIssuance.billing_item_id == item.id)
         )
         if existing:
             return response_for(session, existing)
-        raise HTTPException(status_code=409, detail="Emissão concorrente detectada") from error
+        if constraint_name in DPS_COLLISION_CONSTRAINTS:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Colisão de numeração de DPS "
+                    f"(constraint {constraint_name}, número {number}); "
+                    "sequência resincronizada, tente emitir novamente."
+                ),
+            ) from error
+        raise HTTPException(
+            status_code=409,
+            detail=f"Violação de integridade ao registrar a emissão (constraint {constraint_name})",
+        ) from error
     record_change(
         session,
         actor=actor,
