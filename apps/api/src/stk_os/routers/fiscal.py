@@ -22,7 +22,11 @@ from stk_os.dependencies import require_permission
 from stk_os.fiscal.dps import build_dps, validate_reg_trib, FiscalConfigurationError
 from stk_os.fiscal.provider import ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
-from stk_os.fiscal.sequence import highest_reserved_number, reserve_dps_number
+from stk_os.fiscal.sequence import (
+    highest_reserved_number,
+    reserve_dps_number,
+    sync_dps_sequence,
+)
 from stk_os.fiscal_schemas import (
     FiscalAttemptResponse,
     FiscalDocumentResponse,
@@ -709,6 +713,83 @@ def reconcile_issuance(
         record = session.merge(record)
         complete_command(record, response.model_dump(mode="json"), response_status=200)
         session.commit()
+    return response
+
+
+@router.post("/fiscal/configs/{config_id}/sequence/sync")
+def sync_fiscal_sequence(
+    config_id: uuid.UUID,
+    request: Request,
+    session: SessionDep,
+    idempotency_key: IdempotencyHeader,
+    actor: Annotated[ActorContext, Depends(require_permission("fiscal:reconcile"))],
+) -> dict[str, Any]:
+    config = session.scalar(
+        select(FiscalEstablishmentConfig)
+        .join(
+            FiscalEstablishment,
+            FiscalEstablishment.id == FiscalEstablishmentConfig.establishment_id,
+        )
+        .where(
+            FiscalEstablishmentConfig.id == config_id,
+            FiscalEstablishment.organization_id == actor.organization_id,
+        )
+    )
+    if config is None:
+        raise HTTPException(status_code=404, detail="Configuração fiscal não encontrada")
+    record, cached = begin_command(
+        session,
+        actor=actor,
+        command_name="fiscal.sync_sequence.v1",
+        idempotency_key=idempotency_key,
+        payload={"config_id": str(config_id)},
+        correlation_id=request.state.correlation_id,
+    )
+    if cached:
+        return cached
+    previous, updated, historic = sync_dps_sequence(session, config_id)
+    logger.info(
+        "fiscal_sequence_sync config_id=%s environment=%s series=%s "
+        "previous=%s updated=%s highest=%s correlation_id=%s",
+        config_id,
+        config.environment,
+        config.series,
+        previous,
+        updated,
+        historic,
+        request.state.correlation_id,
+    )
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="fiscal.sequence.sync",
+        resource_type="fiscal_establishment_config",
+        resource_id=config_id,
+        before_state={"next_dps_number": previous},
+        after_state={"next_dps_number": updated},
+        event_type="fiscal.sequence.synced",
+        event_payload={
+            "config_id": str(config_id),
+            "environment": config.environment,
+            "series": config.series,
+            "previous_next_dps_number": previous,
+            "next_dps_number": updated,
+            "highest_dps_number": historic,
+        },
+    )
+    response = {
+        "config_id": str(config_id),
+        "environment": config.environment,
+        "series": config.series,
+        "previous_next_dps_number": previous,
+        "next_dps_number": updated,
+        "highest_dps_number": historic,
+        "changed": updated != previous,
+    }
+    if record:
+        complete_command(record, response, response_status=200)
+    session.commit()
     return response
 
 
