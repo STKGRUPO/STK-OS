@@ -5,9 +5,11 @@ linha de configuração (SELECT ... FOR UPDATE) e nunca fica abaixo do históric
 já registrado, o que cura contadores desalinhados sem intervenção manual.
 """
 
+from __future__ import annotations
+
+
 import uuid
 
-from __future__ import annotations
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
