@@ -220,6 +220,10 @@ button { cursor: pointer; }
 .issue-confirmation dt { color: var(--muted); font-size: .58rem; text-transform: uppercase; }
 .issue-confirmation dd { margin: 4px 0 0; font-size: .72rem; font-weight: 750; }
 .issue-confirmation > button, .fiscal-result > button { border: 0; border-radius: 8px; padding: 10px 13px; color: white; background: var(--green); font-weight: 750; }
+.fiscal-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.fiscal-metadata div { border-radius: 8px; padding: 9px; background: white; }
+.fiscal-metadata dt { color: var(--muted); font-size: .58rem; text-transform: uppercase; }
+.fiscal-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: .72rem; font-weight: 750; }
 .fiscal-error { border-radius: 8px; padding: 10px; color: #8b3825; background: #fae5dc; font-size: .72rem; }
 .fiscal-documents { display: flex; gap: 8px; margin: 13px 0; }
 .fiscal-documents button { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: var(--green); background: white; font-weight: 750; }

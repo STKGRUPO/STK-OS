@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -927,6 +928,7 @@ class FiscalDocument(Base):
     content_type: Mapped[str] = mapped_column(String(100))
     content_sha256: Mapped[str | None] = mapped_column(String(64))
     size_bytes: Mapped[int | None] = mapped_column(Integer)
+    content_bytes: Mapped[bytes | None] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(String(20), default="available")
     error_code: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

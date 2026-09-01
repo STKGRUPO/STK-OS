@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 from urllib.parse import quote, urlparse
 
+from stk_os.fiscal.documents import AuthorizedNfseError, extract_authorized_nfse_metadata
 
 ProviderStatus = Literal["completed", "rejected", "not_found", "uncertain", "external_unavailable"]
 
@@ -81,6 +82,29 @@ class SefinGateway:
             except json.JSONDecodeError:
                 return error.code, {}
 
+    @staticmethod
+    def _authorized_result(
+        data: dict[str, object], *, http_status: int, dps_id: str
+    ) -> ProviderResult:
+        compressed = data.get("nfseXmlGZipB64")
+        try:
+            xml = gzip.decompress(base64.b64decode(str(compressed)))
+            metadata = extract_authorized_nfse_metadata(xml)
+        except (AuthorizedNfseError, OSError, ValueError):
+            return ProviderResult(
+                status="uncertain",
+                http_status=http_status,
+                error_code="AUTHORIZED_RESPONSE_INVALID",
+            )
+        return ProviderResult(
+            status="completed",
+            http_status=http_status,
+            nfse_number=metadata.nfse_number,
+            access_key=metadata.access_key,
+            provider_reference=dps_id,
+            documents=(ProviderDocument("nfse_xml", "application/xml", xml),),
+        )
+
     def issue(self, *, endpoint: str, dps_id: str, signed_xml: bytes) -> ProviderResult:
         payload = json.dumps(
             {"dpsXmlGZipB64": base64.b64encode(gzip.compress(signed_xml)).decode("ascii")}
@@ -96,21 +120,7 @@ class SefinGateway:
         except (TimeoutError, urllib.error.URLError):
             return ProviderResult(status="uncertain", error_code="TRANSMISSION_UNCERTAIN")
         if status == 201:
-            compressed = data.get("nfseXmlGZipB64")
-            try:
-                xml = gzip.decompress(base64.b64decode(str(compressed)))
-            except Exception:
-                return ProviderResult(
-                    status="uncertain", http_status=status, error_code="AUTHORIZED_RESPONSE_INVALID"
-                )
-            return ProviderResult(
-                status="completed",
-                http_status=status,
-                nfse_number=str(data.get("numero") or data.get("nNFSe") or "SEM_NUMERO"),
-                access_key=str(data.get("chaveAcesso") or ""),
-                provider_reference=dps_id,
-                documents=(ProviderDocument("nfse_xml", "application/xml", xml),),
-            )
+            return self._authorized_result(data, http_status=status, dps_id=dps_id)
         if status in (400, 409, 422):
             return ProviderResult(
                 status="rejected",
@@ -140,12 +150,23 @@ class SefinGateway:
             return ProviderResult(status="not_found", http_status=status)
         access_key = str(data.get("chaveAcesso") or "")
         if status == 200 and access_key:
+            nfse_url = f"{query_base_url.rstrip('/')}/nfse/{quote(access_key, safe='')}"
+            try:
+                nfse_status, nfse_data = self._request(
+                    urllib.request.Request(  # noqa: S310 - HTTPS validado por allowlist
+                        nfse_url, method="GET", headers={"Accept": "application/json"}
+                    )
+                )
+            except (TimeoutError, urllib.error.URLError):
+                return ProviderResult(
+                    status="uncertain", error_code="AUTHORIZED_DOCUMENT_UNAVAILABLE"
+                )
+            if nfse_status == 200:
+                return self._authorized_result(nfse_data, http_status=nfse_status, dps_id=dps_id)
             return ProviderResult(
-                status="completed",
-                http_status=status,
-                nfse_number=str(data.get("numero") or data.get("nNFSe") or "SEM_NUMERO"),
-                access_key=access_key,
-                provider_reference=dps_id,
+                status="uncertain",
+                http_status=nfse_status,
+                error_code="AUTHORIZED_DOCUMENT_UNAVAILABLE",
             )
         return ProviderResult(
             status="uncertain", http_status=status, error_code="RECONCILIATION_AMBIGUOUS"
@@ -182,4 +203,3 @@ class LocalSigningGateway:
 
     def reconcile(self, *, query_base_url: str, dps_id: str) -> ProviderResult:
         return self.transport.reconcile(query_base_url=query_base_url, dps_id=dps_id)
-

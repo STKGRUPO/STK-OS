@@ -26,6 +26,10 @@ from stk_os.models import (
     FiscalIssuance,
 )
 
+AUTHORIZED_NFSE_XML = (
+    Path(__file__).parent / "fixtures" / "nfse_13_authorized_without_signatures.xml"
+).read_bytes()
+
 
 def command_headers(headers: dict[str, str], key: str) -> dict[str, str]:
     return {**headers, "Idempotency-Key": key}
@@ -43,16 +47,24 @@ class FakeGateway:
 
     def result(self, status: str, dps_id: str) -> ProviderResult:
         if status == "completed":
+            sequence = max(self.issue_calls, 1)
+            nfse_number = str(12 + sequence)
+            access_key = str(
+                int("42091022239813375000106000000000001326090584825643") + sequence - 1
+            )
+            authorized_xml = AUTHORIZED_NFSE_XML.replace(
+                b"<nNFSe>13</nNFSe>", f"<nNFSe>{nfse_number}</nNFSe>".encode()
+            ).replace(
+                b"42091022239813375000106000000000001326090584825643",
+                access_key.encode(),
+            )
             return ProviderResult(
                 status="completed",
                 http_status=201,
-                nfse_number=f"NF-{dps_id[-6:]}",
-                access_key=f"KEY-{dps_id}",
+                nfse_number=nfse_number,
+                access_key=access_key,
                 provider_reference=dps_id,
-                documents=(
-                    ProviderDocument("nfse_xml", "application/xml", b"<NFSe synthetic='true'/>"),
-                    ProviderDocument("danfse_pdf", "application/pdf", b"%PDF-1.4 synthetic"),
-                ),
+                documents=(ProviderDocument("nfse_xml", "application/xml", authorized_xml),),
             )
         if status == "uncertain":
             return ProviderResult(status="uncertain", error_code="TRANSMISSION_UNCERTAIN")
@@ -136,15 +148,30 @@ def test_contract_issuance_is_idempotent_and_persists_documents(
     assert first.status_code == replay.status_code == 202
     assert first.json()["status"] == replay.json()["status"] == "completed"
     assert first.json()["issuer_establishment_id"] == str(ESTABLISHMENT_ID)
-    assert first.json()["nfse_number"]
+    assert first.json()["nfse_number"] == "13"
+    assert first.json()["access_key"] == "42091022239813375000106000000000001326090584825643"
     assert {document["document_type"] for document in first.json()["documents"]} == {
         "nfse_xml",
         "danfse_pdf",
     }
     assert fake_gateway.issue_calls == 1
-    document_path = first.json()["documents"][0]["download_path"]
-    downloaded = client.get(document_path, headers=admin_headers)
-    assert downloaded.status_code == 200
+    documents = {document["document_type"]: document for document in first.json()["documents"]}
+    assert documents["nfse_xml"]["filename"] == "NFSE_13_FATURAMENTO_FISCAL_CONTRACT.xml"
+    assert documents["danfse_pdf"]["filename"] == "NFSE_13_FATURAMENTO_FISCAL_CONTRACT.pdf"
+    downloaded_xml = client.get(documents["nfse_xml"]["download_path"], headers=admin_headers)
+    assert downloaded_xml.status_code == 200
+    assert downloaded_xml.content == AUTHORIZED_NFSE_XML
+    assert (
+        'filename="NFSE_13_FATURAMENTO_FISCAL_CONTRACT.xml"'
+        in downloaded_xml.headers["content-disposition"]
+    )
+    downloaded_pdf = client.get(documents["danfse_pdf"]["download_path"], headers=admin_headers)
+    assert downloaded_pdf.status_code == 200
+    assert downloaded_pdf.content.startswith(b"%PDF-")
+    assert (
+        'filename="NFSE_13_FATURAMENTO_FISCAL_CONTRACT.pdf"'
+        in downloaded_pdf.headers["content-disposition"]
+    )
     with session_factory() as session:
         assert (
             session.scalar(
@@ -154,7 +181,9 @@ def test_contract_issuance_is_idempotent_and_persists_documents(
         )
         assert len(session.scalars(select(FiscalIssuance)).all()) == 1
         assert len(session.scalars(select(FiscalAttempt)).all()) == 1
-        assert len(session.scalars(select(FiscalDocument)).all()) == 2
+        persisted_documents = list(session.scalars(select(FiscalDocument)).all())
+        assert len(persisted_documents) == 2
+        assert all(document.content_bytes for document in persisted_documents)
 
 
 def test_missing_required_fiscal_config_blocks_before_number_and_transport(

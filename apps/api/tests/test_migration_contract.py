@@ -112,3 +112,14 @@ def test_fiscal_migration_defines_single_idempotent_issuance_and_reconciliation(
     assert "fiscal_issuances_reconcile_idx" in fiscal
     assert "fiscal issuance identity is immutable" in fiscal
     assert "certificate_secret_ref" in fiscal
+
+
+def test_fiscal_document_content_migration_adds_durable_payload_storage() -> None:
+    delta = (ROOT / "database/migrations/023_fiscal_document_content.sql").read_text(
+        encoding="utf-8"
+    )
+    normalized = delta.upper()
+
+    assert "ADD COLUMN IF NOT EXISTS CONTENT_BYTES BYTEA" in normalized
+    assert "DROP " not in normalized
+    assert "ALTER COLUMN" not in normalized

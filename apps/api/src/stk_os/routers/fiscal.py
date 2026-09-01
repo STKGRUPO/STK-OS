@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -18,8 +18,13 @@ from stk_os.config import get_settings
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
 from stk_os.fiscal.configuration import FiscalConfigurationError, validate_fiscal_config
+from stk_os.fiscal.documents import (
+    extract_authorized_nfse_metadata,
+    friendly_nfse_filename,
+    render_danfse_from_authorized_xml,
+)
 from stk_os.fiscal.dps import build_dps
-from stk_os.fiscal.provider import FiscalGateway, ProviderResult
+from stk_os.fiscal.provider import FiscalGateway, ProviderDocument, ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
 from stk_os.fiscal.sequence import (
     reserve_dps_number,
@@ -179,6 +184,8 @@ def response_for(session: Session, issuance: FiscalIssuance) -> FiscalIssuanceRe
             .order_by(FiscalDocument.document_type)
         ).all()
     )
+    item = session.get(BillingItem, issuance.billing_item_id)
+    customer = session.get(Company, item.customer_company_id) if item else None
     return FiscalIssuanceResponse(
         id=issuance.id,
         billing_item_id=issuance.billing_item_id,
@@ -211,6 +218,16 @@ def response_for(session: Session, issuance: FiscalIssuance) -> FiscalIssuanceRe
                 download_path=f"/api/v1/fiscal/documents/{document.id}/content"
                 if document.status == "available"
                 else None,
+                filename=(
+                    friendly_nfse_filename(
+                        document_type=document.document_type,
+                        nfse_number=issuance.nfse_number or str(issuance.dps_number),
+                        trade_name=customer.trade_name,
+                        legal_name=customer.legal_name,
+                    )
+                    if customer and document.document_type in {"nfse_xml", "danfse_pdf"}
+                    else None
+                ),
             )
             for document in documents
         ],
@@ -292,39 +309,66 @@ def apply_provider_result(
     issuance.lease_expires_at = None
     item = session.get(BillingItem, issuance.billing_item_id)
     if result.status == "completed" and result.nfse_number and result.access_key:
-        issuance.nfse_number = result.nfse_number
-        issuance.access_key = result.access_key
+        provider_documents = {document.document_type: document for document in result.documents}
+        xml_document = provider_documents.get("nfse_xml")
+        generated_documents: dict[str, ProviderDocument] = {}
+        document_failed = False
+        if xml_document is not None:
+            try:
+                metadata = extract_authorized_nfse_metadata(xml_document.content)
+                issuance.nfse_number = metadata.nfse_number
+                issuance.access_key = metadata.access_key
+                generated_documents["nfse_xml"] = xml_document
+                pdf = render_danfse_from_authorized_xml(xml_document.content)
+                generated_documents["danfse_pdf"] = ProviderDocument(
+                    "danfse_pdf", "application/pdf", pdf
+                )
+            except Exception:
+                logger.exception(
+                    "authorized_nfse_document_generation_failed",
+                    extra={"issuance_id": str(issuance.id)},
+                )
+                document_failed = True
+        else:
+            document_failed = True
+        issuance.nfse_number = issuance.nfse_number or result.nfse_number
+        issuance.access_key = issuance.access_key or result.access_key
         issuance.error_category = issuance.error_code = issuance.error_message = None
         issuance.completed_at = now
-        document_failed = False
-        for provider_document in result.documents:
-            extension = "xml" if provider_document.content_type == "application/xml" else "pdf"
-            key = (
-                f"{issuance.organization_id}/{issuance.id}/"
-                f"{provider_document.document_type}.{extension}"
-            )
-            try:
-                digest, size = runtime.document_store.put(key, provider_document.content)
+        for document_type, content_type in (
+            ("nfse_xml", "application/xml"),
+            ("danfse_pdf", "application/pdf"),
+        ):
+            provider_document = generated_documents.get(document_type)
+            if provider_document is not None:
+                document_id = uuid.uuid4()
+                content = provider_document.content
                 session.add(
                     FiscalDocument(
+                        id=document_id,
                         issuance_id=issuance.id,
-                        document_type=provider_document.document_type,
-                        storage_key=key,
-                        content_type=provider_document.content_type,
-                        content_sha256=digest,
-                        size_bytes=size,
+                        document_type=document_type,
+                        storage_key=f"db://fiscal_documents/{document_id}",
+                        content_type=content_type,
+                        content_sha256=hashlib.sha256(content).hexdigest(),
+                        size_bytes=len(content),
+                        content_bytes=content,
                         status="available",
                     )
                 )
-            except OSError:
+            else:
                 document_failed = True
                 session.add(
                     FiscalDocument(
                         issuance_id=issuance.id,
-                        document_type=provider_document.document_type,
-                        content_type=provider_document.content_type,
+                        document_type=document_type,
+                        content_type=content_type,
                         status="failed",
-                        error_code="DOCUMENT_STORAGE_FAILED",
+                        error_code=(
+                            "AUTHORIZED_XML_UNAVAILABLE"
+                            if document_type == "nfse_xml"
+                            else "DANFSE_GENERATION_FAILED"
+                        ),
                     )
                 )
         issuance.status = "document_error" if document_failed else "completed"
@@ -815,7 +859,7 @@ def fiscal_document_content(
     session: SessionDep,
     runtime: RuntimeDep,
     actor: Annotated[ActorContext, Depends(require_permission("fiscal:read"))],
-) -> FileResponse:
+) -> Response:
     document = session.scalar(
         select(FiscalDocument)
         .join(FiscalIssuance, FiscalIssuance.id == FiscalDocument.issuance_id)
@@ -824,22 +868,32 @@ def fiscal_document_content(
             FiscalIssuance.organization_id == actor.organization_id,
         )
     )
-    if document is None or document.status != "available" or not document.storage_key:
+    if document is None or document.status != "available":
         raise HTTPException(status_code=404, detail="Documento fiscal indisponível")
     issuance = session.get(FiscalIssuance, document.issuance_id)
     assert issuance is not None
     get_item(session, actor, issuance.billing_item_id, "fiscal:read")
-    path = runtime.document_store.path_for(document.storage_key)
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Documento fiscal indisponível no storage")
-    extension = "xml" if document.content_type == "application/xml" else "pdf"
-    return FileResponse(
-        path,
-        media_type=document.content_type,
-        filename=(
-            f"{document.document_type}-{issuance.nfse_number or issuance.dps_number}.{extension}"
-        ),
+    item = session.get(BillingItem, issuance.billing_item_id)
+    customer = session.get(Company, item.customer_company_id) if item else None
+    if customer is None or document.document_type not in {"nfse_xml", "danfse_pdf"}:
+        raise HTTPException(status_code=404, detail="Documento fiscal sem cliente vinculado")
+    filename = friendly_nfse_filename(
+        document_type=document.document_type,
+        nfse_number=issuance.nfse_number or str(issuance.dps_number),
+        trade_name=customer.trade_name,
+        legal_name=customer.legal_name,
     )
+    if document.content_bytes is not None:
+        return Response(
+            content=document.content_bytes,
+            media_type=document.content_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    if document.storage_key:
+        path = runtime.document_store.path_for(document.storage_key)
+        if path.is_file():
+            return FileResponse(path, media_type=document.content_type, filename=filename)
+    raise HTTPException(status_code=404, detail="Documento fiscal indisponível no storage")
 
 
 @router.post("/billing/one-time", response_model=OneTimeBillingResponse, status_code=201)

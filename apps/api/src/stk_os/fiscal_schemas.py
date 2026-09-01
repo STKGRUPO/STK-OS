@@ -16,6 +16,7 @@ class FiscalDocumentResponse(BaseModel):
     size_bytes: int | None
     status: str
     download_path: str | None
+    filename: str | None
 
 
 class FiscalAttemptResponse(BaseModel):

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from cryptography import x509
@@ -14,13 +16,22 @@ from lxml import etree
 
 from stk_os.fiscal import certificate_vault
 from stk_os.fiscal.configuration import FiscalConfigurationError
+from stk_os.fiscal.documents import (
+    extract_authorized_nfse_metadata,
+    friendly_nfse_filename,
+    render_danfse_from_authorized_xml,
+)
 from stk_os.fiscal.dps import build_dps
 from stk_os.fiscal.engine import PROFILE_PROFESSIONAL, calculate
+from stk_os.fiscal.provider import SefinGateway
 from stk_os.fiscal.signing import CertificateMaterial, XmlSigner, c14n
 from stk_os.fiscal.storage import PrivateFilesystemDocumentStore
 
 DS = "http://www.w3.org/2000/09/xmldsig#"
 NFSE = "http://www.sped.fazenda.gov.br/nfse"
+AUTHORIZED_NFSE_XML = (
+    Path(__file__).parent / "fixtures" / "nfse_13_authorized_without_signatures.xml"
+).read_bytes()
 
 
 def mr_rules() -> dict[str, object]:
@@ -369,3 +380,40 @@ def test_private_document_store_rejects_path_escape(tmp_path) -> None:
     store = PrivateFilesystemDocumentStore(tmp_path / "private")
     with pytest.raises(ValueError, match="inválida"):
         store.path_for("../outside.xml")
+
+
+def test_real_nfse_13_metadata_and_friendly_filenames() -> None:
+    metadata = extract_authorized_nfse_metadata(AUTHORIZED_NFSE_XML)
+    assert metadata.nfse_number == "13"
+    assert metadata.dps_number == "13"
+    assert metadata.access_key == "42091022239813375000106000000000001326090584825643"
+    assert friendly_nfse_filename(
+        document_type="nfse_xml",
+        nfse_number=metadata.nfse_number,
+        trade_name="Dom Haus",
+        legal_name="Razão social não utilizada",
+    ) == "NFSE_13_DOM_HAUS.xml"
+    assert friendly_nfse_filename(
+        document_type="danfse_pdf",
+        nfse_number=metadata.nfse_number,
+        trade_name=None,
+        legal_name="Clínica São João Ltda.",
+    ) == "NFSE_13_CLINICA_SAO_JOAO_LTDA.pdf"
+
+
+def test_sefin_authorization_uses_number_and_key_from_authorized_xml() -> None:
+    result = SefinGateway._authorized_result(
+        {"nfseXmlGZipB64": base64.b64encode(gzip.compress(AUTHORIZED_NFSE_XML)).decode()},
+        http_status=201,
+        dps_id="DPS-SYNTHETIC",
+    )
+    assert result.status == "completed"
+    assert result.nfse_number == "13"
+    assert result.access_key == "42091022239813375000106000000000001326090584825643"
+    assert result.documents[0].content == AUTHORIZED_NFSE_XML
+
+
+def test_danfse_is_rendered_only_from_real_authorized_xml() -> None:
+    pdf = render_danfse_from_authorized_xml(AUTHORIZED_NFSE_XML)
+    assert pdf.startswith(b"%PDF-")
+    assert len(pdf) > 10_000
