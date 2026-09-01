@@ -59,6 +59,8 @@ class LegalEntityCreate(BaseModel):
     registered_name: str = Field(min_length=2, max_length=255)
     trade_name: str | None = Field(default=None, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=50)
     status: Literal["active", "inactive"] = "active"
     tax_regime: str | None = None
     code: str | None = Field(default=None, min_length=2, max_length=100, pattern=r"^[a-z0-9-]+$")
@@ -72,6 +74,8 @@ class LegalEntityUpdate(BaseModel):
     registered_name: str = Field(min_length=2, max_length=255)
     trade_name: str | None = Field(default=None, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=50)
     status: Literal["active", "inactive"]
     tax_regime: str | None = None
 
@@ -126,6 +130,8 @@ class LegalEntityResponse(BaseModel):
     registered_name: str
     trade_name: str | None
     tax_id: str | None
+    email: str | None
+    phone: str | None
     status: str
     tax_regime: str | None = None
     establishments: list[FiscalEstablishmentResponse]

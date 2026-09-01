@@ -58,6 +58,8 @@ class LegalEntity(TimestampMixin, Base):
     registered_name: Mapped[str] = mapped_column(String(255))
     trade_name: Mapped[str | None] = mapped_column(String(255))
     tax_id: Mapped[str | None] = mapped_column(String(14))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(50))
     tax_regime: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
 

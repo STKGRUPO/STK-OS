@@ -27,12 +27,16 @@ def test_legal_entity_and_fiscal_establishment_crud(
             "registered_name": "Nova Pessoa Jurídica Ltda.",
             "trade_name": "Nova Empresa",
             "tax_id": "11.222.333/0001-81",
+            "email": "contato@nova-empresa.example.test",
+            "phone": "+55 47 3333-1111",
             "status": "active",
         },
     )
     assert created_entity.status_code == 201, created_entity.text
     entity = created_entity.json()
     assert entity["tax_id"] == "11222333000181"
+    assert entity["email"] == "contato@nova-empresa.example.test"
+    assert entity["phone"] == "+55 47 3333-1111"
     assert entity["establishments"] == []
 
     updated_entity = client.patch(
@@ -48,6 +52,24 @@ def test_legal_entity_and_fiscal_establishment_crud(
     assert updated_entity.status_code == 200, updated_entity.text
     assert updated_entity.json()["registered_name"] == "Nova Pessoa Jurídica S.A."
     assert updated_entity.json()["status"] == "inactive"
+    assert updated_entity.json()["email"] == "contato@nova-empresa.example.test"
+    assert updated_entity.json()["phone"] == "+55 47 3333-1111"
+
+    edited_contacts = client.patch(
+        f"/api/v1/organization/legal-entities/{entity['id']}",
+        headers=admin_headers,
+        json={
+            "registered_name": "Nova Pessoa Jurídica S.A.",
+            "trade_name": "Nova Empresa Editada",
+            "tax_id": "11.222.333/0001-81",
+            "email": "geral@nova-empresa.example.test",
+            "phone": "+55 47 3333-2222",
+            "status": "inactive",
+        },
+    )
+    assert edited_contacts.status_code == 200, edited_contacts.text
+    assert edited_contacts.json()["email"] == "geral@nova-empresa.example.test"
+    assert edited_contacts.json()["phone"] == "+55 47 3333-2222"
 
     created_establishment = client.post(
         f"/api/v1/organization/legal-entities/{entity['id']}/fiscal-establishments",
@@ -90,6 +112,9 @@ def test_legal_entity_and_fiscal_establishment_crud(
 
     hierarchy = client.get("/api/v1/organization", headers=admin_headers).json()
     stored = next(item for item in hierarchy["legal_entities"] if item["id"] == entity["id"])
+    assert stored["email"] == "geral@nova-empresa.example.test"
+    assert stored["phone"] == "+55 47 3333-2222"
+    assert stored["email"] != stored["establishments"][0]["email"]
     assert stored["establishments"][0]["business_units"][0]["id"] == str(LAB_UNIT_ID)
 
 

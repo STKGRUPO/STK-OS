@@ -163,3 +163,17 @@ def test_fiscal_establishment_contacts_migration_is_additive() -> None:
     assert "DROP " not in normalized
     assert "DELETE " not in normalized
     assert "UPDATE " not in normalized
+
+
+def test_legal_entity_contacts_migration_is_additive() -> None:
+    delta = (ROOT / "database/migrations/026_legal_entity_contacts.sql").read_text(
+        encoding="utf-8"
+    )
+    normalized = delta.upper()
+
+    assert "ALTER TABLE PUBLIC.LEGAL_ENTITIES" in normalized
+    assert "ADD COLUMN IF NOT EXISTS EMAIL VARCHAR(320)" in normalized
+    assert "ADD COLUMN IF NOT EXISTS PHONE VARCHAR(50)" in normalized
+    assert "DROP " not in normalized
+    assert "DELETE " not in normalized
+    assert "UPDATE " not in normalized

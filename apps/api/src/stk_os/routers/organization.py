@@ -131,6 +131,8 @@ def legal_entity_response(session: SessionDep, entity: LegalEntity) -> LegalEnti
         registered_name=entity.registered_name,
         trade_name=entity.trade_name,
         tax_id=entity.tax_id,
+        email=entity.email,
+        phone=entity.phone,
         status=entity.status,
         tax_regime=entity.tax_regime,
         establishments=[establishment_response(session, item) for item in establishments],
@@ -262,6 +264,8 @@ def get_organization(
                 registered_name=entity.registered_name,
                 trade_name=entity.trade_name,
                 tax_id=entity.tax_id,
+                email=entity.email,
+                phone=entity.phone,
                 status=entity.status,
                 tax_regime=entity.tax_regime,
                 establishments=establishments_by_entity.get(entity.id, []),
@@ -288,6 +292,8 @@ def create_legal_entity(
         registered_name=command.registered_name,
         trade_name=command.trade_name,
         tax_id=command.tax_id,
+        email=command.email,
+        phone=command.phone,
         status=command.status,
         tax_regime=command.tax_regime,
     )
@@ -327,6 +333,10 @@ def update_legal_entity(
     entity.registered_name = command.registered_name
     entity.trade_name = command.trade_name
     entity.tax_id = command.tax_id
+    if "email" in command.model_fields_set:
+        entity.email = command.email
+    if "phone" in command.model_fields_set:
+        entity.phone = command.phone
     entity.status = command.status
     entity.tax_regime = command.tax_regime
     flush_or_conflict(session, "CNPJ já cadastrado")
