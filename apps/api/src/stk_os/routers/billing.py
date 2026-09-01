@@ -1073,6 +1073,9 @@ def billing_summary(
 
 FISCAL_FIELD_LABELS = {
     "tax_id": "CNPJ",
+    "address_line": "logradouro",
+    "address_number": "número",
+    "district": "bairro",
     "postal_code": "CEP",
     "city": "cidade",
     "municipality_code": "código IBGE do município",
@@ -1089,6 +1092,12 @@ def missing_customer_fiscal_fields(company: Company | None) -> list[str]:
     missing: list[str] = []
     if len(only_digits(company.tax_id)) != 14:
         missing.append("tax_id")
+    if not (company.address_line or "").strip():
+        missing.append("address_line")
+    if not (company.address_number or "").strip():
+        missing.append("address_number")
+    if not (company.district or "").strip():
+        missing.append("district")
     if len(only_digits(company.postal_code)) != 8:
         missing.append("postal_code")
     if not (company.city or "").strip():

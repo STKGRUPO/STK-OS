@@ -18,6 +18,7 @@ from lxml import etree
 from stk_os.fiscal import certificate_vault
 from stk_os.fiscal.configuration import FiscalConfigurationError
 from stk_os.fiscal.documents import (
+    DANFSE_LOGO_PATH,
     extract_authorized_nfse_metadata,
     friendly_nfse_filename,
     render_danfse_from_authorized_xml,
@@ -89,16 +90,24 @@ def snapshot(*, issuer: str = "mr", complete_address: bool = True) -> dict[str, 
         "issuer": {
             "tax_id": "12345678000190",
             "municipality_code": "3550308",
+            "email": (
+                "financeiro@st-servicos.example.test"
+                if is_st
+                else "financeiro@engenhariamr.com.br"
+            ),
+            "phone": "47999990002" if is_st else "47999990001",
         },
         "customer": {
             "tax_id": "19000000000001",
             "legal_name": "Cliente Sintético Ltda.",
             "municipality_code": "3550308",
             "postal_code": "01001000",
-            "address_line": "Rua Sintética, 100",
+            "address_line": "Rua Sintética",
             "address_number": "100" if complete_address else None,
             "address_complement": "Sala 1",
             "district": "Centro" if complete_address else None,
+            "phone": "+55 (47) 99999-1234",
+            "email": "fiscal@cliente.example.test",
         },
         "service_code": "020101" if is_st else "010101",
         "service_description": "Consultoria sintética",
@@ -311,7 +320,7 @@ def test_multiissuer_rules_are_isolated_and_st_matches_authorized_semantics() ->
     }
 
 
-def test_invalid_st_configuration_does_not_change_mr_and_address_is_atomic() -> None:
+def test_invalid_st_configuration_does_not_change_mr_and_partial_address_is_rejected() -> None:
     mr_before, _, _ = build_dps(snapshot(), series=1, number=1, issued_at=datetime.now(UTC))
     invalid = snapshot(issuer="st")
     invalid["fiscal_rules"] = {**st_rules(), "reg_ap_trib_sn": None}
@@ -320,11 +329,38 @@ def test_invalid_st_configuration_does_not_change_mr_and_address_is_atomic() -> 
     mr_after, _, _ = build_dps(snapshot(), series=1, number=3, issued_at=datetime.now(UTC))
     assert fiscal_semantics(mr_before) == fiscal_semantics(mr_after)
     full, _, _ = build_dps(snapshot(), series=1, number=4, issued_at=datetime.now(UTC))
-    partial, _, _ = build_dps(
-        snapshot(complete_address=False), series=1, number=5, issued_at=datetime.now(UTC)
+    root = etree.fromstring(full)
+    assert root.findtext(f".//{{{NFSE}}}xLgr") == "Rua Sintética"
+    assert root.findtext(f".//{{{NFSE}}}nro") == "100"
+    assert root.findtext(f".//{{{NFSE}}}xCpl") == "Sala 1"
+    assert root.findtext(f".//{{{NFSE}}}xBairro") == "Centro"
+    assert root.findtext(f".//{{{NFSE}}}toma/{{{NFSE}}}fone") == "5547999991234"
+    assert (
+        root.findtext(f".//{{{NFSE}}}toma/{{{NFSE}}}email")
+        == "fiscal@cliente.example.test"
     )
-    assert etree.fromstring(full).find(f".//{{{NFSE}}}xBairro") is not None
-    assert etree.fromstring(partial).find(f".//{{{NFSE}}}end") is None
+    with pytest.raises(
+        FiscalConfigurationError,
+        match="Endereço do tomador incompleto: número, bairro",
+    ):
+        build_dps(
+            snapshot(complete_address=False), series=1, number=5, issued_at=datetime.now(UTC)
+        )
+
+
+def test_establishment_contacts_are_isolated_in_each_dps() -> None:
+    mr, _, _ = build_dps(snapshot(issuer="mr"), series=1, number=1, issued_at=datetime.now(UTC))
+    st, _, _ = build_dps(snapshot(issuer="st"), series=1, number=2, issued_at=datetime.now(UTC))
+    mr_root = etree.fromstring(mr)
+    st_root = etree.fromstring(st)
+    email_path = f".//{{{NFSE}}}prest/{{{NFSE}}}email"
+    phone_path = f".//{{{NFSE}}}prest/{{{NFSE}}}fone"
+
+    assert mr_root.findtext(email_path) == "financeiro@engenhariamr.com.br"
+    assert mr_root.findtext(phone_path) == "47999990001"
+    assert st_root.findtext(email_path) == "financeiro@st-servicos.example.test"
+    assert st_root.findtext(phone_path) == "47999990002"
+    assert st_root.findtext(email_path) != mr_root.findtext(email_path)
 
 
 def test_certificate_lookup_is_scoped_to_each_config_key() -> None:
@@ -446,6 +482,10 @@ def test_sefin_document_recovery_uses_only_get_by_access_key(monkeypatch) -> Non
 
 
 def test_danfse_is_rendered_only_from_real_authorized_xml() -> None:
+    assert hashlib.sha256(DANFSE_LOGO_PATH.read_bytes()).hexdigest() == (
+        "ab57fa34887929a10ee3b9b4d666084ec9b9465e62bbcc3523b99b23ccac1063"
+    )
     pdf = render_danfse_from_authorized_xml(AUTHORIZED_NFSE_XML)
     assert pdf.startswith(b"%PDF-")
     assert len(pdf) > 10_000
+    assert b"/Subtype /Image" in pdf

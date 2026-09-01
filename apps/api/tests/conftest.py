@@ -89,6 +89,8 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
             name="Matriz sintética",
             kind="headquarters",
             tax_id="12345678000190",
+            email="financeiro@engenhariamr.com.br",
+            phone="47999990001",
         )
         second_entity = LegalEntity(
             id=SECOND_LEGAL_ENTITY_ID,
@@ -103,6 +105,8 @@ def clean_database(session_factory: sessionmaker[Session]) -> Iterator[None]:
             code="matriz-st-servicos",
             name="Matriz ST Serviços sintética",
             kind="headquarters",
+            email="financeiro@st-servicos.example.test",
+            phone="47999990002",
         )
         unit = BusinessUnit(
             id=UNIT_ID,

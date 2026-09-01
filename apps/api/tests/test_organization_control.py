@@ -55,6 +55,8 @@ def test_legal_entity_and_fiscal_establishment_crud(
         json={
             "name": "Matriz Nova Empresa",
             "tax_id": "22.333.444/0001-63",
+            "email": "fiscal@nova-empresa.example.test",
+            "phone": "+55 47 3333-4444",
             "kind": "headquarters",
             "status": "active",
             "business_unit_ids": [str(LAB_UNIT_ID)],
@@ -63,6 +65,8 @@ def test_legal_entity_and_fiscal_establishment_crud(
     assert created_establishment.status_code == 201, created_establishment.text
     establishment = created_establishment.json()
     assert establishment["tax_id"] == "22333444000163"
+    assert establishment["email"] == "fiscal@nova-empresa.example.test"
+    assert establishment["phone"] == "+55 47 3333-4444"
     assert [unit["id"] for unit in establishment["business_units"]] == [str(LAB_UNIT_ID)]
 
     updated_establishment = client.patch(
@@ -71,6 +75,8 @@ def test_legal_entity_and_fiscal_establishment_crud(
         json={
             "name": "Matriz Nova Empresa Editada",
             "tax_id": "22.333.444/0001-63",
+            "email": "financeiro@nova-empresa.example.test",
+            "phone": "+55 47 3333-5555",
             "kind": "headquarters",
             "status": "inactive",
             "business_unit_ids": [str(LAB_UNIT_ID)],
@@ -79,6 +85,8 @@ def test_legal_entity_and_fiscal_establishment_crud(
     assert updated_establishment.status_code == 200, updated_establishment.text
     assert updated_establishment.json()["name"] == "Matriz Nova Empresa Editada"
     assert updated_establishment.json()["status"] == "inactive"
+    assert updated_establishment.json()["email"] == "financeiro@nova-empresa.example.test"
+    assert updated_establishment.json()["phone"] == "+55 47 3333-5555"
 
     hierarchy = client.get("/api/v1/organization", headers=admin_headers).json()
     stored = next(item for item in hierarchy["legal_entities"] if item["id"] == entity["id"])

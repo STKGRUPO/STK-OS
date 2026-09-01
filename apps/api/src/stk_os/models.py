@@ -72,6 +72,8 @@ class FiscalEstablishment(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     kind: Mapped[str] = mapped_column(String(20))
     tax_id: Mapped[str | None] = mapped_column(String(14), unique=True)
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="active")
 
 

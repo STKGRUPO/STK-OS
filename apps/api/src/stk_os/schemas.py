@@ -83,6 +83,8 @@ class FiscalEstablishmentCreate(BaseModel):
 
     name: str = Field(min_length=2, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=50)
     kind: Literal["headquarters", "branch"]
     status: Literal["active", "inactive"] = "active"
     business_unit_ids: list[uuid.UUID] = []
@@ -96,6 +98,8 @@ class FiscalEstablishmentUpdate(BaseModel):
 
     name: str = Field(min_length=2, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=14)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=50)
     kind: Literal["headquarters", "branch"]
     status: Literal["active", "inactive"]
     business_unit_ids: list[uuid.UUID] = []
@@ -109,6 +113,8 @@ class FiscalEstablishmentResponse(BaseModel):
     name: str
     kind: str
     tax_id: str | None
+    email: str | None
+    phone: str | None
     status: str
     legal_entity_id: uuid.UUID
     business_units: list[BusinessUnitResponse]

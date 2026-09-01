@@ -46,6 +46,7 @@ from stk_os.models import (
     ClientServiceOccurrence,
     Company,
     CompanyBusinessUnit,
+    ContactMethod,
     FiscalAttempt,
     FiscalDocument,
     FiscalEstablishment,
@@ -55,7 +56,11 @@ from stk_os.models import (
     OperationalException,
     ProductService,
 )
-from stk_os.routers.billing import ensure_unit_access
+from stk_os.routers.billing import (
+    FISCAL_FIELD_LABELS,
+    ensure_unit_access,
+    missing_customer_fiscal_fields,
+)
 from stk_os.schemas import ActorContext
 from stk_os.security import canonical_hash
 
@@ -113,6 +118,55 @@ def service_description(item: BillingItem) -> str:
     return str(service.get("description") or service.get("name") or "Serviço prestado")
 
 
+CUSTOMER_ADDRESS_FIELDS = {
+    "address_line": "logradouro",
+    "address_number": "número",
+    "district": "bairro",
+    "postal_code": "CEP",
+    "municipality_code": "código IBGE do município",
+}
+
+
+def canonical_company_contact(session: Session, company_id: uuid.UUID, kind: str) -> str | None:
+    contact = session.scalar(
+        select(ContactMethod)
+        .where(
+            ContactMethod.company_id == company_id,
+            ContactMethod.kind == kind,
+            ContactMethod.status == "active",
+        )
+        .order_by(
+            ContactMethod.is_primary.desc(),
+            ContactMethod.created_at.asc(),
+            ContactMethod.id.asc(),
+        )
+        .limit(1)
+    )
+    if contact is None:
+        return None
+    value = (contact.normalized_value or contact.value).strip()
+    return value or None
+
+
+def validate_customer_address(customer: Company) -> None:
+    values = {
+        field: str(getattr(customer, field) or "").strip()
+        for field in CUSTOMER_ADDRESS_FIELDS
+    }
+    has_address_data = any(values.values()) or any(
+        str(getattr(customer, field) or "").strip()
+        for field in ("address_complement", "city", "state_code")
+    )
+    if not has_address_data:
+        return
+    missing = [label for field, label in CUSTOMER_ADDRESS_FIELDS.items() if not values[field]]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail="Endereço do tomador incompleto: " + ", ".join(missing) + ".",
+        )
+
+
 def build_fiscal_snapshot(
     session: Session,
     item: BillingItem,
@@ -125,6 +179,7 @@ def build_fiscal_snapshot(
     entity = session.get(LegalEntity, issuer.legal_entity_id) if issuer else None
     if customer is None or issuer is None or entity is None:
         raise HTTPException(status_code=422, detail="Cliente ou emissor fiscal indisponível")
+    validate_customer_address(customer)
     missing: list[str] = []
     if not customer.tax_id or len(customer.tax_id) != 14:
         missing.append("CNPJ do cliente")
@@ -156,6 +211,8 @@ def build_fiscal_snapshot(
             "tax_id": issuer_tax_id,
             "municipality_code": config.municipality_code,
             "certificate_key_id": config.certificate_key_id,
+            "email": issuer.email,
+            "phone": issuer.phone,
         },
         "customer": {
             "company_id": str(customer.id),
@@ -165,8 +222,12 @@ def build_fiscal_snapshot(
             "address_number": customer.address_number,
             "address_complement": customer.address_complement,
             "district": customer.district,
+            "city": customer.city,
+            "state_code": customer.state_code,
             "municipality_code": customer.municipality_code,
             "postal_code": customer.postal_code,
+            "email": canonical_company_contact(session, customer.id, "email"),
+            "phone": canonical_company_contact(session, customer.id, "phone"),
         },
         "service_description": service_description(item),
         "service_code": config.service_code,
@@ -678,7 +739,10 @@ def issue_billing_item(
             session.commit()
         return response
     if item.status != "ready":
-        raise HTTPException(status_code=409, detail="Item não está pronto para emissão")
+        raise HTTPException(
+            status_code=409,
+            detail=item.blocking_reason or "Item não está pronto para emissão",
+        )
     if item.issuer_establishment_id is None:
         raise HTTPException(status_code=422, detail="Item sem estabelecimento emissor definido")
     settings = get_settings()
@@ -1275,11 +1339,15 @@ def create_one_time_billing(
     session.add(occurrence)
     session.flush()
     blockers: list[dict[str, str]] = []
-    if not company.tax_id or not company.municipality_code or not company.postal_code:
+    missing_customer_fields = missing_customer_fiscal_fields(company)
+    if missing_customer_fields:
+        labels = ", ".join(
+            FISCAL_FIELD_LABELS[field] for field in missing_customer_fields
+        )
         blockers.append(
             {
                 "code": "CUSTOMER_FISCAL_DATA_INCOMPLETE",
-                "reason": "Complete CNPJ, código IBGE e CEP no cadastro CRM do cliente.",
+                "reason": f"Cadastro do cliente incompleto para fins fiscais: {labels}.",
             }
         )
     snapshot = {

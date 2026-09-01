@@ -111,6 +111,8 @@ def establishment_response(
         name=establishment.name,
         kind=establishment.kind,
         tax_id=establishment.tax_id,
+        email=establishment.email,
+        phone=establishment.phone,
         status=establishment.status,
         legal_entity_id=establishment.legal_entity_id,
         business_units=[BusinessUnitResponse.model_validate(unit) for unit in units],
@@ -241,6 +243,8 @@ def get_organization(
                 name=establishment.name,
                 kind=establishment.kind,
                 tax_id=establishment.tax_id,
+                email=establishment.email,
+                phone=establishment.phone,
                 status=establishment.status,
                 legal_entity_id=establishment.legal_entity_id,
                 business_units=units_by_establishment.get(establishment.id, []),
@@ -366,6 +370,8 @@ def create_fiscal_establishment(
         name=command.name,
         kind=command.kind,
         tax_id=command.tax_id,
+        email=command.email,
+        phone=command.phone,
         status=command.status,
     )
     session.add(establishment)
@@ -418,6 +424,10 @@ def update_fiscal_establishment(
     establishment.name = command.name
     establishment.kind = command.kind
     establishment.tax_id = command.tax_id
+    if "email" in command.model_fields_set:
+        establishment.email = command.email
+    if "phone" in command.model_fields_set:
+        establishment.phone = command.phone
     establishment.status = command.status
     link_business_units(
         session,

@@ -12,6 +12,7 @@ from stk_os.fiscal.danfse import generate_danfse
 
 NFSE_NAMESPACE = "http://www.sped.fazenda.gov.br/nfse"
 NS = {"n": NFSE_NAMESPACE}
+DANFSE_LOGO_PATH = Path(__file__).with_name("assets") / "nfse_logo.png"
 WINDOWS_RESERVED_NAMES = {
     "AUX",
     "CON",
@@ -102,5 +103,5 @@ def render_danfse_from_authorized_xml(xml: bytes) -> bytes:
         xml_path = directory / "authorized-nfse.xml"
         pdf_path = directory / "danfse.pdf"
         xml_path.write_bytes(xml)
-        generate_danfse(xml_path, pdf_path)
+        generate_danfse(xml_path, pdf_path, logo_path=DANFSE_LOGO_PATH)
         return pdf_path.read_bytes()

@@ -150,3 +150,16 @@ def test_fiscal_document_hydration_migration_keeps_metadata_append_only() -> Non
     assert "CREATE EXTENSION" not in normalized
     assert "DROP TRIGGER" not in normalized
     assert "DELETE FROM" not in normalized
+
+
+def test_fiscal_establishment_contacts_migration_is_additive() -> None:
+    delta = (ROOT / "database/migrations/025_fiscal_establishment_contacts.sql").read_text(
+        encoding="utf-8"
+    )
+    normalized = delta.upper()
+
+    assert "ADD COLUMN IF NOT EXISTS EMAIL VARCHAR(320)" in normalized
+    assert "ADD COLUMN IF NOT EXISTS PHONE VARCHAR(50)" in normalized
+    assert "DROP " not in normalized
+    assert "DELETE " not in normalized
+    assert "UPDATE " not in normalized

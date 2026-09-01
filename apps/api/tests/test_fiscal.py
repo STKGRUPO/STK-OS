@@ -16,6 +16,7 @@ from conftest import (
     UNIT_ID,
 )
 from fastapi.testclient import TestClient
+from lxml import etree
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from test_billing import create_billable_contract, generate, month_start
@@ -58,6 +59,7 @@ class FakeGateway:
         self.reconcile_calls = 0
         self.document_fetch_calls = 0
         self.document_xml_override: bytes | None = None
+        self.issued_xmls: list[bytes] = []
         self.lock = threading.Lock()
         self.issue_entered: threading.Event | None = None
         self.issue_release: threading.Event | None = None
@@ -99,6 +101,7 @@ class FakeGateway:
     def issue(self, *, endpoint: str, dps_id: str, signed_xml: bytes) -> ProviderResult:
         assert endpoint.startswith("https://")
         assert signed_xml.startswith(b"<?xml")
+        self.issued_xmls.append(signed_xml)
         with self.lock:
             self.issue_calls += 1
         if self.issue_entered and self.issue_release:
@@ -574,12 +577,35 @@ def create_fiscal_customer(
             "legal_name": f"Cliente Fiscal {suffix} Ltda.",
             "trade_name": f"Fiscal {suffix}",
             "tax_id": f"28000000{len(suffix):06d}",
-            "address_line": "Avenida Sintética, 200",
+            "address_line": "Avenida Sintética",
+            "address_number": "200",
+            "address_complement": "Conjunto 31",
+            "district": "Centro",
             "city": "São Paulo",
             "state_code": "SP",
             "municipality_code": "3550308",
             "postal_code": "01001000",
             "business_unit_ids": [str(UNIT_ID)],
+            "contacts": [
+                {
+                    "kind": "email",
+                    "label": "geral",
+                    "value": f"geral-{suffix}@example.test",
+                    "is_primary": False,
+                },
+                {
+                    "kind": "email",
+                    "label": "fiscal",
+                    "value": f"fiscal-{suffix}@example.test",
+                    "is_primary": True,
+                },
+                {
+                    "kind": "phone",
+                    "label": "fiscal",
+                    "value": "+55 (47) 99999-1234",
+                    "is_primary": True,
+                },
+            ],
         },
     )
     assert response.status_code == 201, response.text
@@ -621,6 +647,23 @@ def test_recurring_without_contract_and_one_time_flow_are_issued(
     )
     recurring = issue(client, admin_headers, billing.json()["id"], "issue-fiscal-recurring")
     assert recurring.json()["status"] == "completed"
+    recurring_xml = etree.fromstring(fake_gateway.issued_xmls[-1])
+    namespace = {"n": "http://www.sped.fazenda.gov.br/nfse"}
+    assert recurring_xml.findtext(".//n:prest/n:email", namespaces=namespace) == (
+        "financeiro@engenhariamr.com.br"
+    )
+    assert recurring_xml.findtext(".//n:prest/n:fone", namespaces=namespace) == "47999990001"
+    assert recurring_xml.findtext(".//n:toma/n:end/n:xLgr", namespaces=namespace) == (
+        "Avenida Sintética"
+    )
+    assert recurring_xml.findtext(".//n:toma/n:end/n:nro", namespaces=namespace) == "200"
+    assert recurring_xml.findtext(".//n:toma/n:end/n:xCpl", namespaces=namespace) == (
+        "Conjunto 31"
+    )
+    assert recurring_xml.findtext(".//n:toma/n:email", namespaces=namespace) == (
+        "fiscal-services@example.test"
+    )
+    assert recurring_xml.findtext(".//n:toma/n:fone", namespaces=namespace) == "5547999991234"
 
     one_time = client.post(
         "/api/v1/billing/one-time",
@@ -661,16 +704,33 @@ def test_known_fiscal_error_is_auditable_and_not_retried(
 
 
 def test_one_time_blocks_incomplete_crm_customer(
-    client: TestClient, admin_headers: dict[str, str], fake_gateway: FakeGateway
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
 ) -> None:
     customer = client.post(
         "/api/v1/crm/companies",
         headers=command_headers(admin_headers, "customer-incomplete-fiscal"),
         json={
             "legal_name": "Cliente Incompleto Fiscal Ltda.",
+            "tax_id": "28000000000019",
+            "address_line": "Rua Parcial",
+            "city": "São Paulo",
+            "state_code": "SP",
+            "municipality_code": "3550308",
+            "postal_code": "01001000",
             "business_unit_ids": [str(UNIT_ID)],
         },
     ).json()
+    with session_factory() as session:
+        config = session.scalar(
+            select(FiscalEstablishmentConfig).where(
+                FiscalEstablishmentConfig.establishment_id == ESTABLISHMENT_ID
+            )
+        )
+        assert config is not None
+        initial_number = config.next_dps_number
     one_time = client.post(
         "/api/v1/billing/one-time",
         headers=command_headers(admin_headers, "one-time-blocked"),
@@ -691,4 +751,12 @@ def test_one_time_blocks_incomplete_crm_customer(
         client, admin_headers, one_time.json()["billing_item_id"], "issue-blocked-item"
     )
     assert blocked_issue.status_code == 409
+    assert "número, bairro" in blocked_issue.json()["detail"]
+    with session_factory() as session:
+        config = session.scalar(
+            select(FiscalEstablishmentConfig).where(
+                FiscalEstablishmentConfig.establishment_id == ESTABLISHMENT_ID
+            )
+        )
+        assert config is not None and config.next_dps_number == initial_number
     assert fake_gateway.issue_calls == 0

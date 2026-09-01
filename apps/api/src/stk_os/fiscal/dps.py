@@ -18,6 +18,13 @@ from stk_os.fiscal.engine import FiscalDecision, calculate
 NS = "http://www.sped.fazenda.gov.br/nfse"
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
+TAKER_ADDRESS_FIELDS = {
+    "address_line": "logradouro",
+    "address_number": "número",
+    "district": "bairro",
+    "postal_code": "CEP",
+    "municipality_code": "código IBGE do município",
+}
 
 
 def emission_timestamp() -> str:
@@ -94,6 +101,12 @@ def build_dps(
     add(inf, "cLocEmi", digits(issuer["municipality_code"]))
     prest = etree.SubElement(inf, q("prest"))
     add(prest, "CNPJ", digits(issuer["tax_id"]))
+    issuer_phone = digits(issuer.get("phone"))
+    if issuer_phone:
+        add(prest, "fone", issuer_phone)
+    issuer_email = str(issuer.get("email") or "").strip().lower()
+    if issuer_email:
+        add(prest, "email", issuer_email)
     reg = etree.SubElement(prest, q("regTrib"))
     # opSimpNac vem SOMENTE do cadastro fiscal do emissor. Sem default silencioso:
     # quem valida a ausencia e validate_reg_trib(), antes de assinar.
@@ -107,14 +120,21 @@ def build_dps(
     toma = etree.SubElement(inf, q("toma"))
     add(toma, "CNPJ", digits(customer["tax_id"]))
     add(toma, "xNome", customer["legal_name"])
-    address_fields = (
-        customer.get("municipality_code"),
-        customer.get("postal_code"),
-        customer.get("address_line"),
-        customer.get("address_number"),
-        customer.get("district"),
+    address_values = {
+        field: str(customer.get(field) or "").strip() for field in TAKER_ADDRESS_FIELDS
+    }
+    has_address_data = any(address_values.values()) or any(
+        str(customer.get(field) or "").strip()
+        for field in ("address_complement", "city", "state_code")
     )
-    if all(str(value or "").strip() for value in address_fields):
+    if has_address_data:
+        missing = [
+            label for field, label in TAKER_ADDRESS_FIELDS.items() if not address_values[field]
+        ]
+        if missing:
+            raise FiscalConfigurationError(
+                "Endereço do tomador incompleto: " + ", ".join(missing) + "."
+            )
         endereco = etree.SubElement(toma, q("end"))
         nacional = etree.SubElement(endereco, q("endNac"))
         add(nacional, "cMun", digits(customer["municipality_code"]))
@@ -125,6 +145,12 @@ def build_dps(
         if complemento:
             add(endereco, "xCpl", complemento)
         add(endereco, "xBairro", customer["district"])
+    customer_phone = digits(customer.get("phone"))
+    if customer_phone:
+        add(toma, "fone", customer_phone)
+    customer_email = str(customer.get("email") or "").strip().lower()
+    if customer_email:
+        add(toma, "email", customer_email)
     serv = etree.SubElement(inf, q("serv"))
     loc = etree.SubElement(serv, q("locPrest"))
     add(loc, "cLocPrestacao", digits(issuer["municipality_code"]))
