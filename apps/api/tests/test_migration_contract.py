@@ -123,3 +123,30 @@ def test_fiscal_document_content_migration_adds_durable_payload_storage() -> Non
     assert "ADD COLUMN IF NOT EXISTS CONTENT_BYTES BYTEA" in normalized
     assert "DROP " not in normalized
     assert "ALTER COLUMN" not in normalized
+
+
+def test_fiscal_document_hydration_migration_keeps_metadata_append_only() -> None:
+    hydration = (
+        ROOT / "database/migrations/024_fiscal_document_content_hydration.sql"
+    ).read_text(encoding="utf-8")
+    normalized = hydration.upper()
+
+    assert "OLD.CONTENT_BYTES IS NULL" in normalized
+    assert "NEW.CONTENT_BYTES IS NOT NULL" in normalized
+    assert "OCTET_LENGTH(NEW.CONTENT_BYTES) = OLD.SIZE_BYTES" in normalized
+    for column in (
+        "ID",
+        "ISSUANCE_ID",
+        "DOCUMENT_TYPE",
+        "STORAGE_KEY",
+        "CONTENT_TYPE",
+        "CONTENT_SHA256",
+        "SIZE_BYTES",
+        "STATUS",
+        "ERROR_CODE",
+        "CREATED_AT",
+    ):
+        assert f"NEW.{column} IS NOT DISTINCT FROM OLD.{column}" in normalized
+    assert "CREATE EXTENSION" not in normalized
+    assert "DROP TRIGGER" not in normalized
+    assert "DELETE FROM" not in normalized

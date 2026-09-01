@@ -8,7 +8,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from conftest import ADMIN_ACTOR_ID, ESTABLISHMENT_ID, MR_PRODUCT_ID, UNIT_ID
+from conftest import (
+    ADMIN_ACTOR_ID,
+    ESTABLISHMENT_ID,
+    LEGAL_ENTITY_ID,
+    MR_PRODUCT_ID,
+    UNIT_ID,
+)
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -19,12 +25,21 @@ from stk_os.fiscal.runtime import get_fiscal_runtime
 from stk_os.fiscal.storage import PrivateFilesystemDocumentStore
 from stk_os.main import fastapi_app
 from stk_os.models import (
+    Actor,
+    ActorRole,
     BillingItem,
     FiscalAttempt,
     FiscalDocument,
+    FiscalEstablishment,
     FiscalEstablishmentConfig,
     FiscalIssuance,
+    LegalEntity,
+    Organization,
+    Permission,
+    Role,
+    RolePermission,
 )
+from stk_os.security import create_access_token
 
 AUTHORIZED_NFSE_XML = (
     Path(__file__).parent / "fixtures" / "nfse_13_authorized_without_signatures.xml"
@@ -41,6 +56,8 @@ class FakeGateway:
         self.reconcile_status = "completed"
         self.issue_calls = 0
         self.reconcile_calls = 0
+        self.document_fetch_calls = 0
+        self.document_xml_override: bytes | None = None
         self.lock = threading.Lock()
         self.issue_entered: threading.Event | None = None
         self.issue_release: threading.Event | None = None
@@ -95,6 +112,29 @@ class FakeGateway:
             self.reconcile_calls += 1
         return self.result(self.reconcile_status, dps_id)
 
+    def fetch_authorized_nfse(
+        self, *, query_base_url: str, access_key: str, dps_id: str
+    ) -> ProviderResult:
+        assert query_base_url.startswith("https://")
+        with self.lock:
+            self.document_fetch_calls += 1
+        if self.document_xml_override is not None:
+            return ProviderResult(
+                status="completed",
+                http_status=200,
+                nfse_number="13",
+                access_key=access_key,
+                provider_reference=dps_id,
+                documents=(
+                    ProviderDocument(
+                        "nfse_xml", "application/xml", self.document_xml_override
+                    ),
+                ),
+            )
+        result = self.result("completed", dps_id)
+        assert result.access_key == access_key
+        return result
+
 
 class FakeSigner:
     def sign(self, xml: bytes, material: object) -> bytes:
@@ -134,6 +174,59 @@ def issue(client: TestClient, headers: dict[str, str], item_id: str, key: str):
         f"/api/v1/billing/items/{item_id}/issue",
         headers=command_headers(headers, key),
     )
+
+
+def configure_nfse_13_issuer(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        establishment = session.get(FiscalEstablishment, ESTABLISHMENT_ID)
+        entity = session.get(LegalEntity, LEGAL_ENTITY_ID)
+        config = session.scalar(
+            select(FiscalEstablishmentConfig).where(
+                FiscalEstablishmentConfig.establishment_id == ESTABLISHMENT_ID
+            )
+        )
+        assert establishment is not None and entity is not None and config is not None
+        establishment.tax_id = "39813375000106"
+        entity.tax_id = "39813375000106"
+        config.next_dps_number = 13
+        session.commit()
+
+
+def other_organization_headers(session_factory: sessionmaker[Session]) -> dict[str, str]:
+    organization_id = uuid.UUID("10000000-0000-4000-8000-000000000099")
+    actor_id = uuid.UUID("60000000-0000-4000-8000-000000000099")
+    role_id = uuid.UUID("50000000-0000-4000-8000-000000000099")
+    with session_factory() as session:
+        session.add_all(
+            [
+                Organization(id=organization_id, code="other-org", name="Outra organização"),
+                Actor(
+                    id=actor_id,
+                    organization_id=organization_id,
+                    kind="user",
+                    display_name="Outro administrador",
+                ),
+                Role(
+                    id=role_id,
+                    organization_id=organization_id,
+                    code="fiscal-reviewer",
+                    name="Fiscal reviewer",
+                ),
+            ]
+        )
+        session.flush()
+        for code in ("fiscal:read", "fiscal:reconcile"):
+            permission = session.scalar(select(Permission).where(Permission.code == code))
+            assert permission is not None
+            session.add(RolePermission(role_id=role_id, permission_id=permission.id))
+        session.add(ActorRole(actor_id=actor_id, role_id=role_id))
+        session.commit()
+    token = create_access_token(
+        actor_id=actor_id,
+        actor_kind="user",
+        permissions={"fiscal:read", "fiscal:reconcile"},
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_contract_issuance_is_idempotent_and_persists_documents(
@@ -184,6 +277,217 @@ def test_contract_issuance_is_idempotent_and_persists_documents(
         persisted_documents = list(session.scalars(select(FiscalDocument)).all())
         assert len(persisted_documents) == 2
         assert all(document.content_bytes for document in persisted_documents)
+
+
+def test_completed_nfse_13_document_recovery_is_idempotent_and_scoped(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    configure_nfse_13_issuer(session_factory)
+    item = create_contract_item(client, admin_headers, "DOCUMENT-RECOVERY")
+    issued = issue(client, admin_headers, item["id"], "issue-document-recovery")
+    assert issued.status_code == 202
+    original = issued.json()
+    assert original["status"] == "completed"
+    assert original["dps_number"] == 13
+    assert original["nfse_number"] == "13"
+    assert original["access_key"] == "42091022239813375000106000000000001326090584825643"
+
+    issuance_id = uuid.UUID(original["id"])
+    with session_factory() as session:
+        xml_document = session.scalar(
+            select(FiscalDocument).where(
+                FiscalDocument.issuance_id == issuance_id,
+                FiscalDocument.document_type == "nfse_xml",
+            )
+        )
+        pdf_document = session.scalar(
+            select(FiscalDocument).where(
+                FiscalDocument.issuance_id == issuance_id,
+                FiscalDocument.document_type == "danfse_pdf",
+            )
+        )
+        assert xml_document is not None and pdf_document is not None
+        xml_document.content_bytes = None
+        session.delete(pdf_document)
+        session.commit()
+
+    endpoint = f"/api/v1/fiscal/issuances/{issuance_id}/documents/reconcile"
+    recovered = client.post(
+        endpoint,
+        headers=command_headers(admin_headers, "recover-documents-13-first"),
+    )
+    assert recovered.status_code == 200, recovered.text
+    assert recovered.json()["status"] == "completed"
+    assert recovered.json()["dps_number"] == 13
+    assert recovered.json()["nfse_number"] == "13"
+    assert recovered.json()["access_key"] == original["access_key"]
+    assert fake_gateway.issue_calls == 1
+    assert fake_gateway.document_fetch_calls == 1
+
+    documents = {
+        document["document_type"]: document for document in recovered.json()["documents"]
+    }
+    assert documents["nfse_xml"]["status"] == "available"
+    assert documents["danfse_pdf"]["status"] == "available"
+    with session_factory() as session:
+        persisted = list(
+            session.scalars(
+                select(FiscalDocument).where(FiscalDocument.issuance_id == issuance_id)
+            )
+        )
+        assert len(persisted) == 2
+        assert all(fiscal_document.content_bytes for fiscal_document in persisted)
+        issuance = session.get(FiscalIssuance, issuance_id)
+        assert issuance is not None
+        assert (issuance.status, issuance.dps_number, issuance.nfse_number) == (
+            "completed",
+            13,
+            "13",
+        )
+        assert issuance.access_key == original["access_key"]
+
+    replay = client.post(
+        endpoint,
+        headers=command_headers(admin_headers, "recover-documents-13-second"),
+    )
+    assert replay.status_code == 200
+    assert replay.json()["status"] == "completed"
+    assert fake_gateway.issue_calls == 1
+    assert fake_gateway.document_fetch_calls == 1
+
+    foreign_headers = other_organization_headers(session_factory)
+    forbidden_recovery = client.post(
+        endpoint,
+        headers=command_headers(foreign_headers, "foreign-document-recovery"),
+    )
+    assert forbidden_recovery.status_code == 404
+    forbidden_download = client.get(
+        documents["nfse_xml"]["download_path"], headers=foreign_headers
+    )
+    assert forbidden_download.status_code == 404
+
+
+def test_document_recovery_rejects_existing_hash_divergence_without_mutation(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    configure_nfse_13_issuer(session_factory)
+    item = create_contract_item(client, admin_headers, "DOCUMENT-DIVERGENCE")
+    issued = issue(client, admin_headers, item["id"], "issue-document-divergence").json()
+    issuance_id = uuid.UUID(issued["id"])
+    with session_factory() as session:
+        xml_document = session.scalar(
+            select(FiscalDocument).where(
+                FiscalDocument.issuance_id == issuance_id,
+                FiscalDocument.document_type == "nfse_xml",
+            )
+        )
+        pdf_document = session.scalar(
+            select(FiscalDocument).where(
+                FiscalDocument.issuance_id == issuance_id,
+                FiscalDocument.document_type == "danfse_pdf",
+            )
+        )
+        assert xml_document is not None and pdf_document is not None
+        xml_document.content_bytes = None
+        xml_document.content_sha256 = "0" * 64
+        session.delete(pdf_document)
+        session.commit()
+
+    response = client.post(
+        f"/api/v1/fiscal/issuances/{issuance_id}/documents/reconcile",
+        headers=command_headers(admin_headers, "recover-divergent-document"),
+    )
+    assert response.status_code == 409
+    assert "diverge" in response.json()["detail"]
+    assert fake_gateway.issue_calls == 1
+    assert fake_gateway.document_fetch_calls == 1
+    with session_factory() as session:
+        issuance = session.get(FiscalIssuance, issuance_id)
+        xml_document = session.scalar(
+            select(FiscalDocument).where(
+                FiscalDocument.issuance_id == issuance_id,
+                FiscalDocument.document_type == "nfse_xml",
+            )
+        )
+        pdf_document = session.scalar(
+            select(FiscalDocument).where(
+                FiscalDocument.issuance_id == issuance_id,
+                FiscalDocument.document_type == "danfse_pdf",
+            )
+        )
+        assert issuance is not None and xml_document is not None
+        assert issuance.status == "completed"
+        assert issuance.dps_number == 13
+        assert issuance.nfse_number == "13"
+        assert issuance.access_key == issued["access_key"]
+        assert xml_document.content_bytes is None
+        assert pdf_document is None
+
+
+@pytest.mark.parametrize(
+    ("existing", "divergent"),
+    (
+        (
+            b"42091022239813375000106000000000001326090584825643",
+            b"42091022239813375000106000000000001326090584825644",
+        ),
+        (b"<nNFSe>13</nNFSe>", b"<nNFSe>14</nNFSe>"),
+        (b"<nDPS>13</nDPS>", b"<nDPS>14</nDPS>"),
+        (
+            b"<prest><CNPJ>39813375000106</CNPJ>",
+            b"<prest><CNPJ>11111111000111</CNPJ>",
+        ),
+    ),
+)
+def test_document_recovery_rejects_authorized_xml_identity_divergence(
+    existing: bytes,
+    divergent: bytes,
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    configure_nfse_13_issuer(session_factory)
+    item = create_contract_item(client, admin_headers, "DOCUMENT-IDENTITY")
+    issued = issue(client, admin_headers, item["id"], "issue-document-identity").json()
+    issuance_id = uuid.UUID(issued["id"])
+    fake_gateway.document_xml_override = AUTHORIZED_NFSE_XML.replace(existing, divergent, 1)
+    assert fake_gateway.document_xml_override != AUTHORIZED_NFSE_XML
+    with session_factory() as session:
+        documents = list(
+            session.scalars(
+                select(FiscalDocument).where(FiscalDocument.issuance_id == issuance_id)
+            )
+        )
+        for document in documents:
+            session.delete(document)
+        session.commit()
+
+    response = client.post(
+        f"/api/v1/fiscal/issuances/{issuance_id}/documents/reconcile",
+        headers=command_headers(admin_headers, "recover-identity-divergence"),
+    )
+    assert response.status_code == 409
+    assert "não corresponde" in response.json()["detail"]
+    assert fake_gateway.issue_calls == 1
+    with session_factory() as session:
+        issuance = session.get(FiscalIssuance, issuance_id)
+        assert issuance is not None
+        assert issuance.status == "completed"
+        assert issuance.dps_number == 13
+        assert issuance.nfse_number == "13"
+        assert issuance.access_key == issued["access_key"]
+        assert not list(
+            session.scalars(
+                select(FiscalDocument).where(FiscalDocument.issuance_id == issuance_id)
+            )
+        )
 
 
 def test_missing_required_fiscal_config_blocks_before_number_and_transport(

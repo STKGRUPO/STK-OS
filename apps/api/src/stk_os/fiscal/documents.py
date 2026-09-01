@@ -31,6 +31,7 @@ class AuthorizedNfseMetadata:
     nfse_number: str
     access_key: str
     dps_number: str
+    issuer_tax_id: str
 
 
 def parse_authorized_nfse(xml: bytes) -> tuple[etree._Element, AuthorizedNfseMetadata]:
@@ -48,13 +49,18 @@ def parse_authorized_nfse(xml: bytes) -> tuple[etree._Element, AuthorizedNfseMet
     identifier = (inf.get("Id") or "").strip()
     access_key = identifier[3:] if identifier.startswith("NFS") else identifier
     dps_number = (inf.findtext(".//n:infDPS/n:nDPS", namespaces=NS) or "").strip()
+    issuer_tax_id = (
+        inf.findtext("n:DPS/n:infDPS/n:prest/n:CNPJ", namespaces=NS) or ""
+    ).strip()
     if not nfse_number:
         raise AuthorizedNfseError("XML autorizado sem nNFSe")
     if len(access_key) != 50 or not access_key.isdigit():
         raise AuthorizedNfseError("XML autorizado sem chave de acesso válida")
     if not dps_number:
         raise AuthorizedNfseError("XML autorizado sem número da DPS")
-    return root, AuthorizedNfseMetadata(nfse_number, access_key, dps_number)
+    if len(issuer_tax_id) != 14 or not issuer_tax_id.isdigit():
+        raise AuthorizedNfseError("XML autorizado sem CNPJ do emissor válido")
+    return root, AuthorizedNfseMetadata(nfse_number, access_key, dps_number, issuer_tax_id)
 
 
 def extract_authorized_nfse_metadata(xml: bytes) -> AuthorizedNfseMetadata:

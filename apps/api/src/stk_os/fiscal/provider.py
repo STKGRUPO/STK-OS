@@ -40,6 +40,10 @@ class FiscalGateway(Protocol):
 
     def reconcile(self, *, query_base_url: str, dps_id: str) -> ProviderResult: ...
 
+    def fetch_authorized_nfse(
+        self, *, query_base_url: str, access_key: str, dps_id: str
+    ) -> ProviderResult: ...
+
 
 def _safe_detail(data: object) -> str:
     if isinstance(data, dict):
@@ -172,6 +176,41 @@ class SefinGateway:
             status="uncertain", http_status=status, error_code="RECONCILIATION_AMBIGUOUS"
         )
 
+    def fetch_authorized_nfse(
+        self, *, query_base_url: str, access_key: str, dps_id: str
+    ) -> ProviderResult:
+        url = f"{query_base_url.rstrip('/')}/nfse/{quote(access_key, safe='')}"
+        try:
+            status, data = self._request(
+                urllib.request.Request(  # noqa: S310 - HTTPS validado por allowlist
+                    url, method="GET", headers={"Accept": "application/json"}
+                )
+            )
+        except (TimeoutError, urllib.error.URLError):
+            return ProviderResult(
+                status="external_unavailable",
+                error_code="AUTHORIZED_DOCUMENT_UNAVAILABLE",
+            )
+        if status == 200:
+            return self._authorized_result(data, http_status=status, dps_id=dps_id)
+        if status == 404:
+            return ProviderResult(
+                status="not_found",
+                http_status=status,
+                error_code="AUTHORIZED_DOCUMENT_NOT_FOUND",
+            )
+        if status == 429 or status >= 500:
+            return ProviderResult(
+                status="external_unavailable",
+                http_status=status,
+                error_code="AUTHORIZED_DOCUMENT_UNAVAILABLE",
+            )
+        return ProviderResult(
+            status="uncertain",
+            http_status=status,
+            error_code="AUTHORIZED_DOCUMENT_RESPONSE_INVALID",
+        )
+
 
 class LocalSigningGateway:
     """Assina o DPS na própria API e transmite direto ao SEFIN via mTLS."""
@@ -203,3 +242,12 @@ class LocalSigningGateway:
 
     def reconcile(self, *, query_base_url: str, dps_id: str) -> ProviderResult:
         return self.transport.reconcile(query_base_url=query_base_url, dps_id=dps_id)
+
+    def fetch_authorized_nfse(
+        self, *, query_base_url: str, access_key: str, dps_id: str
+    ) -> ProviderResult:
+        return self.transport.fetch_authorized_nfse(
+            query_base_url=query_base_url,
+            access_key=access_key,
+            dps_id=dps_id,
+        )

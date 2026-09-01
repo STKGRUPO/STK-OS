@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
+import ssl
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -387,6 +388,7 @@ def test_real_nfse_13_metadata_and_friendly_filenames() -> None:
     assert metadata.nfse_number == "13"
     assert metadata.dps_number == "13"
     assert metadata.access_key == "42091022239813375000106000000000001326090584825643"
+    assert metadata.issuer_tax_id == "39813375000106"
     assert friendly_nfse_filename(
         document_type="nfse_xml",
         nfse_number=metadata.nfse_number,
@@ -411,6 +413,36 @@ def test_sefin_authorization_uses_number_and_key_from_authorized_xml() -> None:
     assert result.nfse_number == "13"
     assert result.access_key == "42091022239813375000106000000000001326090584825643"
     assert result.documents[0].content == AUTHORIZED_NFSE_XML
+
+
+def test_sefin_document_recovery_uses_only_get_by_access_key(monkeypatch) -> None:
+    requests = []
+    gateway = SefinGateway(
+        ssl.create_default_context(), allowed_hosts=frozenset({"sefin.nfse.gov.br"})
+    )
+
+    def fake_request(request):
+        requests.append(request)
+        return 200, {
+            "nfseXmlGZipB64": base64.b64encode(
+                gzip.compress(AUTHORIZED_NFSE_XML)
+            ).decode()
+        }
+
+    monkeypatch.setattr(gateway, "_request", fake_request)
+    result = gateway.fetch_authorized_nfse(
+        query_base_url="https://sefin.nfse.gov.br/api/v1",
+        access_key="42091022239813375000106000000000001326090584825643",
+        dps_id="DPS-13",
+    )
+
+    assert result.status == "completed"
+    assert len(requests) == 1
+    assert requests[0].method == "GET"
+    assert requests[0].data is None
+    assert requests[0].full_url.endswith(
+        "/nfse/42091022239813375000106000000000001326090584825643"
+    )
 
 
 def test_danfse_is_rendered_only_from_real_authorized_xml() -> None:

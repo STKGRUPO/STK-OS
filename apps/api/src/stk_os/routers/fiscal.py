@@ -69,6 +69,14 @@ IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key", min_length=8,
 RuntimeDep = Annotated[FiscalRuntime, Depends(get_fiscal_runtime)]
 
 
+class FiscalDocumentRecoveryError(RuntimeError):
+    def __init__(self, code: str, detail: str, *, status_code: int = 409) -> None:
+        super().__init__(detail)
+        self.code = code
+        self.detail = detail
+        self.status_code = status_code
+
+
 def utc(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=UTC)
 
@@ -286,6 +294,138 @@ def persist_exception(
                 "detail": detail[:1000],
             },
         )
+    )
+
+
+def fiscal_document_is_intact(document: FiscalDocument | None) -> bool:
+    if (
+        document is None
+        or document.status != "available"
+        or document.content_bytes is None
+        or document.content_sha256 is None
+        or document.size_bytes is None
+    ):
+        return False
+    return (
+        len(document.content_bytes) == document.size_bytes
+        and hashlib.sha256(document.content_bytes).hexdigest() == document.content_sha256
+    )
+
+
+def persist_recovered_document(
+    session: Session,
+    issuance: FiscalIssuance,
+    *,
+    document_type: str,
+    content_type: str,
+    content: bytes,
+) -> str:
+    digest = hashlib.sha256(content).hexdigest()
+    size = len(content)
+    document = session.scalar(
+        select(FiscalDocument)
+        .where(
+            FiscalDocument.issuance_id == issuance.id,
+            FiscalDocument.document_type == document_type,
+        )
+        .with_for_update()
+    )
+    if document is None:
+        document_id = uuid.uuid4()
+        session.add(
+            FiscalDocument(
+                id=document_id,
+                issuance_id=issuance.id,
+                document_type=document_type,
+                storage_key=f"db://fiscal_documents/{document_id}",
+                content_type=content_type,
+                content_sha256=digest,
+                size_bytes=size,
+                content_bytes=content,
+                status="available",
+            )
+        )
+        return "inserted"
+    if document.status != "available":
+        raise FiscalDocumentRecoveryError(
+            "DOCUMENT_METADATA_DIVERGENCE",
+            f"Documento {document_type} existente não está disponível para hidratação",
+        )
+    if document.content_bytes is not None:
+        if not fiscal_document_is_intact(document):
+            raise FiscalDocumentRecoveryError(
+                "DOCUMENT_CONTENT_DIVERGENCE",
+                f"Documento {document_type} persistido diverge de seu hash ou tamanho",
+            )
+        return "unchanged"
+    if document.content_sha256 != digest or document.size_bytes != size:
+        raise FiscalDocumentRecoveryError(
+            "DOCUMENT_METADATA_DIVERGENCE",
+            f"Conteúdo recuperado de {document_type} diverge do hash ou tamanho existente",
+        )
+    document.content_bytes = content
+    return "hydrated"
+
+
+def validate_recovered_nfse_identity(
+    session: Session,
+    issuance: FiscalIssuance,
+    config: FiscalEstablishmentConfig,
+    xml: bytes,
+) -> None:
+    metadata = extract_authorized_nfse_metadata(xml)
+    establishment = session.get(FiscalEstablishment, config.establishment_id)
+    entity = session.get(LegalEntity, establishment.legal_entity_id) if establishment else None
+    snapshot_issuer = issuance.snapshot.get("issuer") or {}
+    expected_tax_id = establishment.tax_id if establishment and establishment.tax_id else None
+    if expected_tax_id is None and entity:
+        expected_tax_id = entity.tax_id
+    same_dps = metadata.dps_number.lstrip("0") == str(issuance.dps_number).lstrip("0")
+    if (
+        config.organization_id != issuance.organization_id
+        or establishment is None
+        or entity is None
+        or entity.organization_id != issuance.organization_id
+        or str(snapshot_issuer.get("establishment_id") or "") != str(config.establishment_id)
+        or str(snapshot_issuer.get("tax_id") or "") != str(expected_tax_id or "")
+        or metadata.issuer_tax_id != str(expected_tax_id or "")
+        or metadata.access_key != issuance.access_key
+        or metadata.nfse_number != issuance.nfse_number
+        or not same_dps
+    ):
+        raise FiscalDocumentRecoveryError(
+            "AUTHORIZED_DOCUMENT_IDENTITY_DIVERGENCE",
+            "XML recuperado não corresponde à emissão fiscal autorizada",
+        )
+
+
+def record_document_recovery_failure(
+    session: Session,
+    actor: ActorContext,
+    issuance_id: uuid.UUID,
+    correlation_id: uuid.UUID,
+    error: FiscalDocumentRecoveryError,
+) -> None:
+    persist_exception(
+        session,
+        actor,
+        correlation_id,
+        issuance_id=issuance_id,
+        category="document",
+        code=error.code,
+        detail=error.detail,
+    )
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=correlation_id,
+        action="fiscal.documents.recovery_failed",
+        resource_type="fiscal_issuance",
+        resource_id=issuance_id,
+        before_state=None,
+        after_state={"document_recovery": "failed", "error_code": error.code},
+        event_type="fiscal.documents.recovery_failed.v1",
+        event_payload={"issuance_id": str(issuance_id), "error_code": error.code},
     )
 
 
@@ -773,6 +913,163 @@ def reconcile_issuance(
         record = session.merge(record)
         complete_command(record, response.model_dump(mode="json"), response_status=200)
         session.commit()
+    return response
+
+
+@router.post(
+    "/fiscal/issuances/{issuance_id}/documents/reconcile",
+    response_model=FiscalIssuanceResponse,
+)
+def reconcile_issuance_documents(
+    issuance_id: uuid.UUID,
+    request: Request,
+    session: SessionDep,
+    runtime: RuntimeDep,
+    idempotency_key: IdempotencyHeader,
+    actor: Annotated[ActorContext, Depends(require_permission("fiscal:reconcile"))],
+) -> FiscalIssuanceResponse:
+    issuance = session.scalar(
+        select(FiscalIssuance)
+        .where(
+            FiscalIssuance.id == issuance_id,
+            FiscalIssuance.organization_id == actor.organization_id,
+        )
+        .with_for_update()
+    )
+    if issuance is None:
+        raise HTTPException(status_code=404, detail="Emissão fiscal não encontrada")
+    get_item(session, actor, issuance.billing_item_id, "fiscal:reconcile")
+    if issuance.status not in {"completed", "document_error"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Recuperação documental exige NFS-e previamente autorizada",
+        )
+    if not issuance.access_key or not issuance.nfse_number:
+        raise HTTPException(status_code=409, detail="Emissão autorizada sem identidade da NFS-e")
+    config = session.get(FiscalEstablishmentConfig, issuance.establishment_config_id)
+    if config is None or config.organization_id != actor.organization_id:
+        raise HTTPException(status_code=422, detail="Configuração fiscal indisponível")
+    record, cached = begin_command(
+        session,
+        actor=actor,
+        command_name="fiscal.reconcile_issuance_documents.v1",
+        idempotency_key=idempotency_key,
+        payload={"issuance_id": str(issuance_id)},
+        correlation_id=request.state.correlation_id,
+    )
+    if cached:
+        return FiscalIssuanceResponse.model_validate(cached)
+
+    documents = {
+        document.document_type: document
+        for document in session.scalars(
+            select(FiscalDocument).where(FiscalDocument.issuance_id == issuance.id)
+        )
+    }
+    actions = {"nfse_xml": "unchanged", "danfse_pdf": "unchanged"}
+    try:
+        if not all(
+            fiscal_document_is_intact(documents.get(document_type))
+            for document_type in ("nfse_xml", "danfse_pdf")
+        ):
+            try:
+                gateway = runtime.gateway_for(session, config)
+            except (RuntimeError, ValueError) as error:
+                raise FiscalDocumentRecoveryError(
+                    "DOCUMENT_RECOVERY_CONFIGURATION_ERROR",
+                    "Configuração segura para consulta documental indisponível",
+                    status_code=503,
+                ) from error
+            result = gateway.fetch_authorized_nfse(
+                query_base_url=config.query_base_url,
+                access_key=issuance.access_key,
+                dps_id=issuance.dps_id,
+            )
+            xml_document = next(
+                (
+                    document
+                    for document in result.documents
+                    if document.document_type == "nfse_xml"
+                ),
+                None,
+            )
+            if result.status != "completed" or xml_document is None:
+                raise FiscalDocumentRecoveryError(
+                    result.error_code or "AUTHORIZED_DOCUMENT_UNAVAILABLE",
+                    "SEFIN não retornou o XML autorizado para recuperação documental",
+                    status_code=503 if result.status == "external_unavailable" else 409,
+                )
+            validate_recovered_nfse_identity(session, issuance, config, xml_document.content)
+            pdf = render_danfse_from_authorized_xml(xml_document.content)
+            actions["nfse_xml"] = persist_recovered_document(
+                session,
+                issuance,
+                document_type="nfse_xml",
+                content_type="application/xml",
+                content=xml_document.content,
+            )
+            actions["danfse_pdf"] = persist_recovered_document(
+                session,
+                issuance,
+                document_type="danfse_pdf",
+                content_type="application/pdf",
+                content=pdf,
+            )
+            session.flush()
+    except FiscalDocumentRecoveryError as error:
+        session.rollback()
+        record_document_recovery_failure(
+            session,
+            actor,
+            issuance_id,
+            request.state.correlation_id,
+            error,
+        )
+        session.commit()
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    except Exception as error:
+        logger.exception(
+            "fiscal_document_recovery_failed",
+            extra={"issuance_id": str(issuance_id)},
+        )
+        session.rollback()
+        safe_error = FiscalDocumentRecoveryError(
+            "DOCUMENT_RECOVERY_FAILED",
+            "Não foi possível validar e persistir os documentos autorizados",
+            status_code=502,
+        )
+        record_document_recovery_failure(
+            session,
+            actor,
+            issuance_id,
+            request.state.correlation_id,
+            safe_error,
+        )
+        session.commit()
+        raise HTTPException(
+            status_code=safe_error.status_code, detail=safe_error.detail
+        ) from error
+
+    record_change(
+        session,
+        actor=actor,
+        correlation_id=request.state.correlation_id,
+        action="fiscal.documents.reconciled",
+        resource_type="fiscal_issuance",
+        resource_id=issuance.id,
+        before_state={"status": issuance.status},
+        after_state={"status": issuance.status, "documents": actions},
+        event_type="fiscal.documents.reconciled.v1",
+        event_payload={
+            "issuance_id": str(issuance.id),
+            "status": issuance.status,
+            "documents": actions,
+        },
+    )
+    response = response_for(session, issuance)
+    if record:
+        complete_command(record, response.model_dump(mode="json"), response_status=200)
+    session.commit()
     return response
 
 

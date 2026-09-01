@@ -926,3 +926,193 @@ def test_postgres_migration_007_client_services_and_billing_origins() -> None:
             ("service_one_time", 1),
             ("service_recurring", 1),
         ]
+
+
+@pytest.mark.postgres
+def test_postgres_fiscal_document_allows_only_initial_content_hydration() -> None:
+    with psycopg.connect(postgres_test_url(), autocommit=True) as connection:
+        applied = apply_foundation(connection)
+        assert applied.index("023_fiscal_document_content.sql") < applied.index(
+            "024_fiscal_document_content_hydration.sql"
+        )
+
+        organization_id = uuid.UUID("10000000-0000-4000-8000-000000000001")
+        establishment_id = uuid.UUID("30000000-0000-4000-8000-000000000001")
+        unit_id = uuid.UUID("40000000-0000-4000-8000-000000000001")
+        actor_id = uuid.uuid4()
+        company_id = uuid.uuid4()
+        contract_id = uuid.uuid4()
+        version_id = uuid.uuid4()
+        run_id = uuid.uuid4()
+        item_id = uuid.uuid4()
+        config_id = uuid.uuid4()
+        issuance_id = uuid.uuid4()
+        xml_document_id = uuid.uuid4()
+        receipt_document_id = uuid.uuid4()
+
+        connection.execute(
+            "INSERT INTO actors (id, organization_id, kind, display_name) "
+            "VALUES (%s, %s, 'user', 'Hydration PostgreSQL')",
+            (actor_id, organization_id),
+        )
+        connection.execute(
+            "INSERT INTO companies (id, organization_id, legal_name, created_by_actor_id) "
+            "VALUES (%s, %s, 'Cliente Hydration', %s)",
+            (company_id, organization_id, actor_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO company_business_units (
+                organization_id, company_id, business_unit_id, owner_actor_id
+            ) VALUES (%s, %s, %s, %s)
+            """,
+            (organization_id, company_id, unit_id, actor_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contracts (
+                id, organization_id, business_unit_id, customer_company_id,
+                internal_number, administrative_status, start_date, contract_type,
+                owner_actor_id, created_by_actor_id
+            ) VALUES (%s, %s, %s, %s, 'HYDRATION-024', 'active', current_date,
+                      'recurring_service', %s, %s)
+            """,
+            (contract_id, organization_id, unit_id, company_id, actor_id, actor_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contract_versions (
+                id, organization_id, contract_id, version_number, effective_from,
+                issuer_establishment_id, currency, billing_frequency, pricing_model,
+                amount, change_type, change_reason, source, configuration_sha256,
+                created_by_actor_id
+            ) VALUES (%s, %s, %s, 1, current_date, %s, 'BRL', 'monthly',
+                      'monthly', 100.00, 'initial', 'Hydration 024', 'system', %s, %s)
+            """,
+            (
+                version_id,
+                organization_id,
+                contract_id,
+                establishment_id,
+                "a" * 64,
+                actor_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO billing_runs (
+                id, organization_id, business_unit_id, competence_month, run_type,
+                status, operational_timezone, rule_version, actor_id, correlation_id
+            ) VALUES (%s, %s, %s, date_trunc('month', current_date)::date, 'manual',
+                      'completed', 'America/Sao_Paulo', 'test', %s, %s)
+            """,
+            (run_id, organization_id, unit_id, actor_id, uuid.uuid4()),
+        )
+        connection.execute(
+            """
+            INSERT INTO billing_items (
+                id, organization_id, business_unit_id, created_by_run_id, source_type,
+                contract_id, contract_version_id, competence_month, customer_company_id,
+                issuer_establishment_id, currency, gross_amount, snapshot, snapshot_sha256,
+                status, correlation_id, created_by_actor_id
+            ) VALUES (%s, %s, %s, %s, 'contract_recurring', %s, %s,
+                      date_trunc('month', current_date)::date, %s, %s, 'BRL', 100.00,
+                      '{}'::jsonb, %s, 'completed', %s, %s)
+            """,
+            (
+                item_id,
+                organization_id,
+                unit_id,
+                run_id,
+                contract_id,
+                version_id,
+                company_id,
+                establishment_id,
+                "b" * 64,
+                uuid.uuid4(),
+                actor_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO fiscal_establishment_configs (
+                id, organization_id, establishment_id, environment, emission_method,
+                endpoint, query_base_url, certificate_secret_ref, certificate_key_id,
+                municipality_code, service_code, nbs_code
+            ) VALUES (%s, %s, %s, 'production', 'api_a1',
+                      'https://sefin.nfse.gov.br/api/v1/dps',
+                      'https://sefin.nfse.gov.br/api/v1', 'vault://test', 'test',
+                      '4209102', '020101', '114031000')
+            """,
+            (config_id, organization_id, establishment_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO fiscal_issuances (
+                id, organization_id, billing_item_id, establishment_config_id,
+                environment, status, series, dps_number, dps_id, snapshot,
+                snapshot_sha256, nfse_number, access_key, requested_by_actor_id,
+                correlation_id
+            ) VALUES (%s, %s, %s, %s, 'production', 'completed', 1, 13,
+                      'DPS-HYDRATION-13', '{}'::jsonb, %s, '13', %s, %s, %s)
+            """,
+            (
+                issuance_id,
+                organization_id,
+                item_id,
+                config_id,
+                "c" * 64,
+                "42091022239813375000106000000000001326090584825643",
+                actor_id,
+                uuid.uuid4(),
+            ),
+        )
+        xml = b"xml"
+        connection.execute(
+            """
+            INSERT INTO fiscal_documents (
+                id, issuance_id, document_type, storage_key, content_type,
+                content_sha256, size_bytes, status, content_bytes
+            ) VALUES (%s, %s, 'nfse_xml', 'legacy/nfse.xml', 'application/xml',
+                      %s, %s, 'available', NULL)
+            """,
+            (xml_document_id, issuance_id, hashlib.sha256(xml).hexdigest(), len(xml)),
+        )
+        connection.execute(
+            "UPDATE fiscal_documents SET content_bytes = %s WHERE id = %s",
+            (xml, xml_document_id),
+        )
+        assert connection.execute(
+            "SELECT content_bytes FROM fiscal_documents WHERE id = %s", (xml_document_id,)
+        ).fetchone() == (xml,)
+
+        forbidden_updates = (
+            (
+                "UPDATE fiscal_documents SET content_bytes = %s WHERE id = %s",
+                (b"new", xml_document_id),
+            ),
+            ("UPDATE fiscal_documents SET content_bytes = NULL WHERE id = %s", (xml_document_id,)),
+            (
+                "UPDATE fiscal_documents SET storage_key = 'changed' WHERE id = %s",
+                (xml_document_id,),
+            ),
+        )
+        for statement, parameters in forbidden_updates:
+            with pytest.raises(errors.RaiseException):
+                connection.execute(statement, parameters)
+
+        connection.execute(
+            """
+            INSERT INTO fiscal_documents (
+                id, issuance_id, document_type, storage_key, content_type,
+                content_sha256, size_bytes, status, content_bytes
+            ) VALUES (%s, %s, 'provider_receipt', 'legacy/receipt.json',
+                      'application/json', %s, 4, 'available', NULL)
+            """,
+            (receipt_document_id, issuance_id, "d" * 64),
+        )
+        with pytest.raises(errors.RaiseException):
+            connection.execute(
+                "UPDATE fiscal_documents SET content_bytes = %s WHERE id = %s",
+                (b"bad", receipt_document_id),
+            )
