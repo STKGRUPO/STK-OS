@@ -151,6 +151,126 @@ def fiscal_semantics(xml: bytes) -> dict[str, str | None]:
     return {name: root.findtext(f".//n:{name}", namespaces=ns) for name in names}
 
 
+@pytest.mark.parametrize(
+    ("gross_amount", "expected"),
+    (
+        (
+            "120.00",
+            {
+                "vPis": "0.78",
+                "vCofins": "3.60",
+                "tpRetPisCofins": "0",
+                "vRetIRRF": None,
+                "vRetCSLL": None,
+                "csll": Decimal("1.20"),
+                "social_retido": Decimal("0.00"),
+                "irrf_retido": Decimal("0.00"),
+                "reter_social": False,
+                "reter_irrf": False,
+                "liquido": Decimal("120.00"),
+            },
+        ),
+        (
+            "450.00",
+            {
+                "vPis": "2.93",
+                "vCofins": "13.50",
+                "tpRetPisCofins": "3",
+                "vRetIRRF": None,
+                "vRetCSLL": "20.93",
+                "csll": Decimal("4.50"),
+                "social_retido": Decimal("20.93"),
+                "irrf_retido": Decimal("0.00"),
+                "reter_social": True,
+                "reter_irrf": False,
+                "liquido": Decimal("429.07"),
+            },
+        ),
+        (
+            "800.00",
+            {
+                "vPis": "5.20",
+                "vCofins": "24.00",
+                "tpRetPisCofins": "3",
+                "vRetIRRF": "12.00",
+                "vRetCSLL": "37.20",
+                "csll": Decimal("8.00"),
+                "social_retido": Decimal("37.20"),
+                "irrf_retido": Decimal("12.00"),
+                "reter_social": True,
+                "reter_irrf": True,
+                "liquido": Decimal("750.80"),
+            },
+        ),
+        (
+            "2750.00",
+            {
+                "vPis": "17.88",
+                "vCofins": "82.50",
+                "tpRetPisCofins": "3",
+                "vRetIRRF": "41.25",
+                "vRetCSLL": "127.88",
+                "csll": Decimal("27.50"),
+                "social_retido": Decimal("127.88"),
+                "irrf_retido": Decimal("41.25"),
+                "reter_social": True,
+                "reter_irrf": True,
+                "liquido": Decimal("2580.87"),
+            },
+        ),
+    ),
+)
+def test_mr_build_dps_matches_four_authorized_golden_samples(
+    gross_amount: str,
+    expected: dict[str, str | Decimal | bool | None],
+) -> None:
+    current = snapshot(issuer="mr")
+    current["gross_amount"] = gross_amount
+    xml, _, decision = build_dps(
+        current,
+        series=1,
+        number=1,
+        issued_at=datetime(2026, 8, 20, 12, tzinfo=UTC),
+    )
+    root = etree.fromstring(xml)
+    ns = {"n": NFSE}
+
+    assert {
+        name: root.findtext(f".//n:{name}", namespaces=ns)
+        for name in (
+            "opSimpNac",
+            "regEspTrib",
+            "tribISSQN",
+            "tpRetISSQN",
+            "CST",
+            "pTotTribFed",
+            "pTotTribEst",
+            "pTotTribMun",
+            "pTotTribSN",
+            "indTotTrib",
+        )
+    } == {
+        "opSimpNac": "1",
+        "regEspTrib": "0",
+        "tribISSQN": "1",
+        "tpRetISSQN": "1",
+        "CST": "01",
+        "pTotTribFed": "13.45",
+        "pTotTribEst": "0.00",
+        "pTotTribMun": "3.83",
+        "pTotTribSN": None,
+        "indTotTrib": None,
+    }
+    for name in ("vPis", "vCofins", "tpRetPisCofins", "vRetIRRF", "vRetCSLL"):
+        assert root.findtext(f".//n:{name}", namespaces=ns) == expected[name]
+    assert decision.csll == expected["csll"]
+    assert decision.social_retido == expected["social_retido"]
+    assert decision.irrf_retido == expected["irrf_retido"]
+    assert decision.reter_social is expected["reter_social"]
+    assert decision.reter_irrf is expected["reter_irrf"]
+    assert decision.liquido == expected["liquido"]
+
+
 def test_multiissuer_rules_are_isolated_and_st_matches_authorized_semantics() -> None:
     mr_first, _, _ = build_dps(
         snapshot(issuer="mr"), series=1, number=1, issued_at=datetime.now(UTC)
