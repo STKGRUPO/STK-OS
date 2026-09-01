@@ -17,8 +17,14 @@ from test_billing import create_billable_contract, generate, month_start
 from stk_os.fiscal.provider import ProviderDocument, ProviderResult
 from stk_os.fiscal.runtime import get_fiscal_runtime
 from stk_os.fiscal.storage import PrivateFilesystemDocumentStore
-from stk_os.main import app
-from stk_os.models import BillingItem, FiscalAttempt, FiscalDocument, FiscalIssuance
+from stk_os.main import fastapi_app
+from stk_os.models import (
+    BillingItem,
+    FiscalAttempt,
+    FiscalDocument,
+    FiscalEstablishmentConfig,
+    FiscalIssuance,
+)
 
 
 def command_headers(headers: dict[str, str], key: str) -> dict[str, str]:
@@ -91,11 +97,11 @@ def fake_gateway(tmp_path: Path) -> FakeGateway:
         signer=FakeSigner(),
         secret_resolver=SimpleNamespace(resolve=lambda key_id: key_id),
         document_store=PrivateFilesystemDocumentStore(tmp_path / "documents"),
-        gateway_for=lambda config: gateway,
+        gateway_for=lambda session, config: gateway,
     )
-    app.dependency_overrides[get_fiscal_runtime] = lambda: runtime
+    fastapi_app.dependency_overrides[get_fiscal_runtime] = lambda: runtime
     yield gateway
-    app.dependency_overrides.pop(get_fiscal_runtime, None)
+    fastapi_app.dependency_overrides.pop(get_fiscal_runtime, None)
 
 
 def create_contract_item(
@@ -149,6 +155,38 @@ def test_contract_issuance_is_idempotent_and_persists_documents(
         assert len(session.scalars(select(FiscalIssuance)).all()) == 1
         assert len(session.scalars(select(FiscalAttempt)).all()) == 1
         assert len(session.scalars(select(FiscalDocument)).all()) == 2
+
+
+def test_missing_required_fiscal_config_blocks_before_number_and_transport(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    item = create_contract_item(client, admin_headers, "FISCAL-INVALID-CONFIG")
+    with session_factory() as session:
+        config = session.scalar(
+            select(FiscalEstablishmentConfig).where(
+                FiscalEstablishmentConfig.establishment_id == ESTABLISHMENT_ID
+            )
+        )
+        assert config is not None
+        initial_number = config.next_dps_number
+        config.fiscal_rules = {**config.fiscal_rules, "reg_esp_trib": None}
+        session.commit()
+    response = issue(client, admin_headers, item["id"], "issue-invalid-config")
+    assert response.status_code == 422
+    with session_factory() as session:
+        config = session.scalar(
+            select(FiscalEstablishmentConfig).where(
+                FiscalEstablishmentConfig.establishment_id == ESTABLISHMENT_ID
+            )
+        )
+        assert config is not None and config.next_dps_number == initial_number
+        assert session.scalar(select(FiscalIssuance).where(
+            FiscalIssuance.billing_item_id == uuid.UUID(str(item["id"]))
+        )) is None
+    assert fake_gateway.issue_calls == 0
 
 
 def test_timeout_is_reconciled_without_second_issue(

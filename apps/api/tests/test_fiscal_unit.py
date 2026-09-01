@@ -12,16 +12,64 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.x509.oid import NameOID
 from lxml import etree
 
+from stk_os.fiscal import certificate_vault
+from stk_os.fiscal.configuration import FiscalConfigurationError
 from stk_os.fiscal.dps import build_dps
 from stk_os.fiscal.engine import PROFILE_PROFESSIONAL, calculate
-from stk_os.fiscal.signing import CertificateMaterial, XmlSigner
+from stk_os.fiscal.signing import CertificateMaterial, XmlSigner, c14n
 from stk_os.fiscal.storage import PrivateFilesystemDocumentStore
 
 DS = "http://www.w3.org/2000/09/xmldsig#"
 NFSE = "http://www.sped.fazenda.gov.br/nfse"
 
 
-def snapshot(*, tax_regime: str = "lucro_presumido") -> dict[str, object]:
+def mr_rules() -> dict[str, object]:
+    return {
+        "tax_regime": "lucro_presumido",
+        "op_simp_nac": "1",
+        "reg_esp_trib": "0",
+        "service_profile": "servicos_profissionais",
+        "trib_issqn": "1",
+        "iss_percent": "2.00",
+        "iss_retained_by_taker": False,
+        "pis_cofins_cst": "01",
+        "pis_cofins_retention_type": "automatic",
+        "pis_percent": "0.65",
+        "cofins_percent": "3.00",
+        "csll_percent": "1.00",
+        "irrf_percent": "1.50",
+        "social_retention_applicable": True,
+        "irrf_retention_applicable": True,
+        "social_retention_min": "10.00",
+        "irrf_retention_min": "10.00",
+        "tot_trib_strategy": "percentual",
+        "aprox_tributos_federal": "13.45",
+        "aprox_tributos_estadual": "0.00",
+        "aprox_tributos_municipal": "3.83",
+    }
+
+
+def st_rules() -> dict[str, object]:
+    return {
+        "tax_regime": "simples_nacional",
+        "op_simp_nac": "3",
+        "reg_ap_trib_sn": "1",
+        "reg_esp_trib": "0",
+        "service_profile": "perfil_empresa",
+        "trib_issqn": "1",
+        "iss_percent": "0.00",
+        "iss_retained_by_taker": False,
+        "pis_cofins_cst": "00",
+        "pis_cofins_retention_type": "0",
+        "tot_trib_strategy": "percentual",
+        "aprox_tributos_federal": "13.45",
+        "aprox_tributos_estadual": "0.00",
+        "aprox_tributos_municipal": "3.83",
+    }
+
+
+def snapshot(*, issuer: str = "mr", complete_address: bool = True) -> dict[str, object]:
+    is_st = issuer == "st"
     return {
         "environment": "homologation",
         "competence_date": "2026-08-01",
@@ -36,19 +84,14 @@ def snapshot(*, tax_regime: str = "lucro_presumido") -> dict[str, object]:
             "municipality_code": "3550308",
             "postal_code": "01001000",
             "address_line": "Rua Sintética, 100",
+            "address_number": "100" if complete_address else None,
+            "address_complement": "Sala 1",
+            "district": "Centro" if complete_address else None,
         },
-        "service_code": "010101",
+        "service_code": "020101" if is_st else "010101",
         "service_description": "Consultoria sintética",
-        "nbs_code": "101010100",
-        "fiscal_rules": {
-            "tax_regime": tax_regime,
-            "service_profile": "servicos_profissionais",
-            "iss_percent": "2.00",
-            "pis_percent": "0.65",
-            "cofins_percent": "3.00",
-            "csll_percent": "1.00",
-            "irrf_percent": "1.50",
-        },
+        "nbs_code": "114031000" if is_st else "101010100",
+        "fiscal_rules": st_rules() if is_st else mr_rules(),
     }
 
 
@@ -81,15 +124,12 @@ def certificate_material() -> tuple[CertificateMaterial, rsa.RSAPrivateKey]:
 
 def test_extracted_engine_preserves_threshold_and_simples_behavior() -> None:
     regular = calculate(
-        {
-            "tax_regime": "lucro_presumido",
-            "fiscal": {"social_retention_min": "10.00", "irrf_retention_min": "10.00"},
-        },
+        {"tax_regime": "lucro_presumido", "fiscal": mr_rules()},
         PROFILE_PROFESSIONAL,
         Decimal("1000.00"),
     )
     simple = calculate(
-        {"tax_regime": "simples_nacional", "fiscal": {}},
+        {"tax_regime": "simples_nacional", "fiscal": st_rules()},
         PROFILE_PROFESSIONAL,
         Decimal("1000.00"),
     )
@@ -98,6 +138,85 @@ def test_extracted_engine_preserves_threshold_and_simples_behavior() -> None:
     assert regular.liquido == Decimal("938.50")
     assert simple.federal_fields_mode == "omit"
     assert simple.total_retido == Decimal("0.00")
+
+
+def fiscal_semantics(xml: bytes) -> dict[str, str | None]:
+    root = etree.fromstring(xml)
+    ns = {"n": NFSE}
+    names = (
+        "opSimpNac", "regApTribSN", "regEspTrib", "cTribNac", "cNBS",
+        "tribISSQN", "tpRetISSQN", "CST", "tpRetPisCofins",
+        "pTotTribFed", "pTotTribEst", "pTotTribMun", "indTotTrib",
+    )
+    return {name: root.findtext(f".//n:{name}", namespaces=ns) for name in names}
+
+
+def test_multiissuer_rules_are_isolated_and_st_matches_authorized_semantics() -> None:
+    mr_first, _, _ = build_dps(
+        snapshot(issuer="mr"), series=1, number=1, issued_at=datetime.now(UTC)
+    )
+    st, _, _ = build_dps(
+        snapshot(issuer="st"), series=1, number=2, issued_at=datetime.now(UTC)
+    )
+    mr_second, _, _ = build_dps(
+        snapshot(issuer="mr"), series=1, number=3, issued_at=datetime.now(UTC)
+    )
+    assert fiscal_semantics(mr_first) == fiscal_semantics(mr_second)
+    assert fiscal_semantics(st) == {
+        "opSimpNac": "3",
+        "regApTribSN": "1",
+        "regEspTrib": "0",
+        "cTribNac": "020101",
+        "cNBS": "114031000",
+        "tribISSQN": "1",
+        "tpRetISSQN": "1",
+        "CST": "00",
+        "tpRetPisCofins": "0",
+        "pTotTribFed": "13.45",
+        "pTotTribEst": "0.00",
+        "pTotTribMun": "3.83",
+        "indTotTrib": None,
+    }
+
+
+def test_invalid_st_configuration_does_not_change_mr_and_address_is_atomic() -> None:
+    mr_before, _, _ = build_dps(snapshot(), series=1, number=1, issued_at=datetime.now(UTC))
+    invalid = snapshot(issuer="st")
+    invalid["fiscal_rules"] = {**st_rules(), "reg_ap_trib_sn": None}
+    with pytest.raises(FiscalConfigurationError):
+        build_dps(invalid, series=1, number=2, issued_at=datetime.now(UTC))
+    mr_after, _, _ = build_dps(snapshot(), series=1, number=3, issued_at=datetime.now(UTC))
+    assert fiscal_semantics(mr_before) == fiscal_semantics(mr_after)
+    full, _, _ = build_dps(snapshot(), series=1, number=4, issued_at=datetime.now(UTC))
+    partial, _, _ = build_dps(
+        snapshot(complete_address=False), series=1, number=5, issued_at=datetime.now(UTC)
+    )
+    assert etree.fromstring(full).find(f".//{{{NFSE}}}xBairro") is not None
+    assert etree.fromstring(partial).find(f".//{{{NFSE}}}end") is None
+
+
+def test_certificate_lookup_is_scoped_to_each_config_key() -> None:
+    calls: list[dict[str, object]] = []
+
+    class EmptyResult:
+        def first(self):
+            return None
+
+    class RecordingSession:
+        def execute(self, statement, params):
+            del statement
+            calls.append(params)
+            return EmptyResult()
+
+    for establishment, key in (("issuer-mr", "key-mr"), ("issuer-st", "key-st")):
+        config = type("Config", (), {
+            "establishment_id": establishment,
+            "certificate_key_id": key,
+            "environment": "production",
+        })()
+        with pytest.raises(Exception, match="Nenhum certificado A1 ativo"):
+            certificate_vault._load_stored_material(RecordingSession(), config)
+    assert [call["certificate_key_id"] for call in calls] == ["key-mr", "key-st"]
 
 
 def test_dps_is_signed_in_memory_with_legacy_xmldsig_profile() -> None:
@@ -114,14 +233,14 @@ def test_dps_is_signed_in_memory_with_legacy_xmldsig_profile() -> None:
     assert signed_info is not None and signature_value
     key.public_key().verify(
         base64.b64decode(signature_value),
-        etree.tostring(signed_info, method="c14n"),
+        c14n(signed_info),
         padding.PKCS1v15(),
         hashes.SHA1(),  # noqa: S303 - perfil homologado do legado
     )
     inf = root.find(f"{{{NFSE}}}infDPS")
     assert inf is not None and inf.get("Id") == dps_identifier
     expected_digest = base64.b64encode(
-        hashlib.sha1(etree.tostring(inf, method="c14n"), usedforsecurity=False).digest()
+        hashlib.sha1(c14n(inf), usedforsecurity=False).digest()
     ).decode()
     assert signature.findtext(f".//{{{DS}}}DigestValue") == expected_digest
 

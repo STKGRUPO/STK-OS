@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from lxml import etree
 
+from stk_os.fiscal.configuration import (
+    FiscalConfigurationError,
+    required_text,
+    validate_fiscal_rules,
+)
 from stk_os.fiscal.engine import FiscalDecision, calculate
 
 NS = "http://www.sped.fazenda.gov.br/nfse"
@@ -64,65 +69,16 @@ def dps_id(snapshot: dict[str, Any], series: int, number: int) -> str:
     )
 
 
-class FiscalConfigurationError(RuntimeError):
-    """Configuracao fiscal do emissor incompleta ou incoerente."""
-
-
-def validate_reg_trib(rules: dict) -> None:
-    """Bloqueia a emissao antes do POST, em vez de deixar a SEFIN validar por nos."""
-    op_simp_nac = str(rules.get("op_simp_nac") or "").strip()
-    if op_simp_nac not in {"1", "2", "3"}:
-        raise FiscalConfigurationError(
-            "Configuracao fiscal do emissor sem situacao no Simples Nacional "
-            "(opSimpNac). Preencha em Empresas do Grupo > Configuracao fiscal."
-        )
-    reg_ap_trib_sn = str(rules.get("reg_ap_trib_sn") or "").strip()
-    if op_simp_nac == "3" and reg_ap_trib_sn not in {"1", "2", "3"}:
-        raise FiscalConfigurationError(
-            "Emissor optante ME/EPP sem regime de apuracao no Simples Nacional "
-            "(regApTribSN) configurado."
-        )
-    if op_simp_nac != "3" and reg_ap_trib_sn:
-        raise FiscalConfigurationError(
-            "regApTribSN so pode ser informado para emissor optante ME/EPP."
-        )
-
-
-def validate_tot_trib(rules: dict) -> None:
-    """Bloqueia antes de assinar/transmitir quando totTrib nao pode ser montado."""
-    op_simp_nac = str(rules.get("op_simp_nac") or "").strip()
-    if op_simp_nac in {"2", "3"}:
-        if not str(rules.get("simples_total_tax_percent") or "").strip():
-            raise FiscalConfigurationError(
-                "Emissor optante do Simples Nacional sem percentual total de tributos "
-                "(pTotTribSN) na configuracao fiscal."
-            )
-        return
-    faltando = [
-        campo
-        for campo in (
-            "aprox_tributos_federal",
-            "aprox_tributos_estadual",
-            "aprox_tributos_municipal",
-        )
-        if not str(rules.get(campo) or "").strip()
-    ]
-    if faltando:
-        raise FiscalConfigurationError(
-            "Emissor nao optante sem percentuais aproximados de tributos: "
-            + ", ".join(faltando)
-        )
-
-
 def build_dps(
     snapshot: dict[str, Any], *, series: int, number: int, issued_at: datetime
 ) -> tuple[bytes, str, FiscalDecision]:
     issuer = snapshot["issuer"]
     customer = snapshot["customer"]
     rules = snapshot["fiscal_rules"]
+    validate_fiscal_rules(rules)
     decision = calculate(
-        {"tax_regime": rules.get("tax_regime", "lucro_presumido"), "fiscal": rules},
-        rules.get("service_profile", "perfil_empresa"),
+        {"tax_regime": required_text(rules, "tax_regime"), "fiscal": rules},
+        required_text(rules, "service_profile"),
         Decimal(snapshot["gross_amount"]),
     )
     identifier = dps_id(snapshot, series, number)
@@ -147,20 +103,28 @@ def build_dps(
     # Fora de optante ME/EPP a tag nao pode existir no XML.
     if op_simp_nac == "3" and reg_ap_trib_sn:
         add(reg, "regApTribSN", reg_ap_trib_sn)
-    add(reg, "regEspTrib", str(rules.get("reg_esp_trib") or "0").strip() or "0")
+    add(reg, "regEspTrib", required_text(rules, "reg_esp_trib"))
     toma = etree.SubElement(inf, q("toma"))
     add(toma, "CNPJ", digits(customer["tax_id"]))
     add(toma, "xNome", customer["legal_name"])
-    endereco = etree.SubElement(toma, q("end"))
-    nacional = etree.SubElement(endereco, q("endNac"))
-    add(nacional, "cMun", digits(customer["municipality_code"]))
-    add(nacional, "CEP", digits(customer["postal_code"]))
-    add(endereco, "xLgr", customer.get("address_line") or "Nao informado")
-    add(endereco, "nro", rules.get("taker_address_number", "S/N"))
-    complemento = (customer.get("address_complement") or "").strip()
-    if complemento:
-        add(endereco, "xCpl", complemento)
-    add(endereco, "xBairro", (customer.get("district") or "").strip() or "Centro")
+    address_fields = (
+        customer.get("municipality_code"),
+        customer.get("postal_code"),
+        customer.get("address_line"),
+        customer.get("address_number"),
+        customer.get("district"),
+    )
+    if all(str(value or "").strip() for value in address_fields):
+        endereco = etree.SubElement(toma, q("end"))
+        nacional = etree.SubElement(endereco, q("endNac"))
+        add(nacional, "cMun", digits(customer["municipality_code"]))
+        add(nacional, "CEP", digits(customer["postal_code"]))
+        add(endereco, "xLgr", customer["address_line"])
+        add(endereco, "nro", customer["address_number"])
+        complemento = str(customer.get("address_complement") or "").strip()
+        if complemento:
+            add(endereco, "xCpl", complemento)
+        add(endereco, "xBairro", customer["district"])
     serv = etree.SubElement(inf, q("serv"))
     loc = etree.SubElement(serv, q("locPrest"))
     add(loc, "cLocPrestacao", digits(issuer["municipality_code"]))
@@ -173,48 +137,38 @@ def build_dps(
     add(service_values, "vServ", f"{decision.bruto:.2f}")
     trib = etree.SubElement(valores, q("trib"))
     municipal = etree.SubElement(trib, q("tribMun"))
-    add(municipal, "tribISSQN", "1")
+    add(municipal, "tribISSQN", required_text(rules, "trib_issqn"))
     add(municipal, "tpRetISSQN", "2" if decision.reter_iss else "1")
     if decision.reter_iss and decision.iss > 0:
-        add(municipal, "pAliq", rules.get("iss_percent", "0.00"))
+        add(municipal, "pAliq", required_text(rules, "iss_percent"))
+    federal = etree.SubElement(trib, q("tribFed"))
+    pcf = etree.SubElement(federal, q("piscofins"))
+    add(pcf, "CST", required_text(rules, "pis_cofins_cst"))
     if decision.federal_fields_mode == "standard":
-        federal = etree.SubElement(trib, q("tribFed"))
-        pcf = etree.SubElement(federal, q("piscofins"))
-        add(pcf, "CST", "01")
         add(pcf, "vBCPisCofins", f"{decision.bruto:.2f}")
-        add(pcf, "pAliqPis", rules.get("pis_percent", "0.65"))
-        add(pcf, "pAliqCofins", rules.get("cofins_percent", "3.00"))
+        add(pcf, "pAliqPis", required_text(rules, "pis_percent"))
+        add(pcf, "pAliqCofins", required_text(rules, "cofins_percent"))
         add(pcf, "vPis", f"{decision.pis:.2f}")
         add(pcf, "vCofins", f"{decision.cofins:.2f}")
-        add(pcf, "tpRetPisCofins", "3" if decision.reter_social else "0")
         if decision.irrf_retido > 0:
             add(federal, "vRetIRRF", f"{decision.irrf_retido:.2f}")
         if decision.social_retido > 0:
             # Preservado do legado; o Gate A deve validar o mapeamento agregado.
             add(federal, "vRetCSLL", f"{decision.social_retido:.2f}")
+    retention_type = required_text(rules, "pis_cofins_retention_type")
+    if retention_type == "automatic":
+        retention_type = "3" if decision.reter_social else "0"
+    add(pcf, "tpRetPisCofins", retention_type)
     total = etree.SubElement(trib, q("totTrib"))
-    op_simp_nac = str(rules.get("op_simp_nac") or "").strip()
-    if op_simp_nac in {"2", "3"}:
-        # Optante do Simples: pTotTribSN vem do cadastro fiscal.
-        # indTotTrib nao pode existir para ME/EPP (E0712) e nao ha default aceitavel.
-        sn_pct = str(rules.get("simples_total_tax_percent") or "").strip()
-        if not sn_pct:
-            raise FiscalConfigurationError(
-                "Emissor optante do Simples Nacional sem percentual total de tributos "
-                "(pTotTribSN) na configuracao fiscal."
-            )
-        add(total, "pTotTribSN", sn_pct)
-    else:
-        fed = str(rules.get("aprox_tributos_federal") or "").strip()
-        est = str(rules.get("aprox_tributos_estadual") or "").strip()
-        mun = str(rules.get("aprox_tributos_municipal") or "").strip()
-        if not (fed and est and mun):
-            raise FiscalConfigurationError(
-                "Emissor nao optante sem percentuais aproximados de tributos "
-                "(pTotTribFed/pTotTribEst/pTotTribMun) na configuracao fiscal."
-            )
+    strategy = required_text(rules, "tot_trib_strategy")
+    if strategy == "percentual":
         percentages = etree.SubElement(total, q("pTotTrib"))
-        add(percentages, "pTotTribFed", fed)
-        add(percentages, "pTotTribEst", est)
-        add(percentages, "pTotTribMun", mun)
+        add(percentages, "pTotTribFed", required_text(rules, "aprox_tributos_federal"))
+        add(percentages, "pTotTribEst", required_text(rules, "aprox_tributos_estadual"))
+        add(percentages, "pTotTribMun", required_text(rules, "aprox_tributos_municipal"))
+    elif strategy == "simples_nacional":
+        add(total, "pTotTribSN", required_text(rules, "simples_total_tax_percent"))
+    else:  # proteção defensiva; validate_fiscal_rules já rejeita antes.
+        raise FiscalConfigurationError("Estratégia tot_trib_strategy inválida.")
+    xml_bytes = etree.tostring(root, xml_declaration=True, encoding="UTF-8")
     return xml_bytes, identifier, decision

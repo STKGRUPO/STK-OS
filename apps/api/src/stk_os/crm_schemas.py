@@ -62,6 +62,9 @@ class CompanyCreate(BaseModel):
     trade_name: str | None = Field(default=None, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=18)
     address_line: str | None = Field(default=None, max_length=1000)
+    address_number: str | None = Field(default=None, max_length=60)
+    address_complement: str | None = Field(default=None, max_length=255)
+    district: str | None = Field(default=None, max_length=255)
     city: str | None = Field(default=None, max_length=255)
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
     municipality_code: str | None = Field(default=None, pattern=r"^\d{7}$")
@@ -79,6 +82,9 @@ class CompanyUpdate(BaseModel):
     trade_name: str | None = Field(default=None, max_length=255)
     tax_id: str | None = Field(default=None, min_length=14, max_length=18)
     address_line: str | None = Field(default=None, max_length=1000)
+    address_number: str | None = Field(default=None, max_length=60)
+    address_complement: str | None = Field(default=None, max_length=255)
+    district: str | None = Field(default=None, max_length=255)
     city: str | None = Field(default=None, max_length=255)
     state_code: str | None = Field(default=None, min_length=2, max_length=2)
     municipality_code: str | None = Field(default=None, pattern=r"^\d{7}$")
@@ -95,6 +101,9 @@ class CompanySummary(BaseModel):
     trade_name: str | None
     tax_id: str | None
     address_line: str | None
+    address_number: str | None
+    address_complement: str | None
+    district: str | None
     city: str | None
     state_code: str | None
     municipality_code: str | None

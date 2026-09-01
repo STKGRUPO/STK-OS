@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import uuid
 import logging
-
-logger = logging.getLogger(__name__)
+import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any
@@ -19,12 +17,11 @@ from stk_os.commands import begin_command, complete_command, record_change
 from stk_os.config import get_settings
 from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
-from stk_os.fiscal.dps import build_dps, validate_reg_trib, FiscalConfigurationError
-from stk_os.fiscal.dps import build_dps, validate_reg_trib, validate_tot_trib
-from stk_os.fiscal.provider import ProviderResult
+from stk_os.fiscal.configuration import FiscalConfigurationError, validate_fiscal_config
+from stk_os.fiscal.dps import build_dps
+from stk_os.fiscal.provider import FiscalGateway, ProviderResult
 from stk_os.fiscal.runtime import FiscalRuntime, get_fiscal_runtime
 from stk_os.fiscal.sequence import (
-    highest_reserved_number,
     reserve_dps_number,
     sync_dps_sequence,
 )
@@ -58,6 +55,11 @@ from stk_os.schemas import ActorContext
 from stk_os.security import canonical_hash
 
 router = APIRouter(tags=["fiscal"])
+logger = logging.getLogger(__name__)
+DPS_COLLISION_CONSTRAINTS = {
+    "fiscal_issuances_dps_id_key",
+    "fiscal_issuances_establishment_config_id_environment_series_dps_number_key",
+}
 IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=255)]
 RuntimeDep = Annotated[FiscalRuntime, Depends(get_fiscal_runtime)]
 
@@ -113,12 +115,6 @@ def build_fiscal_snapshot(
     missing: list[str] = []
     if not customer.tax_id or len(customer.tax_id) != 14:
         missing.append("CNPJ do cliente")
-    if not customer.address_line:
-        missing.append("endereço do cliente")
-    if not customer.municipality_code or len(customer.municipality_code) != 7:
-        missing.append("código IBGE do município do cliente")
-    if not customer.postal_code or len(customer.postal_code) != 8:
-        missing.append("CEP do cliente")
     issuer_tax_id = issuer.tax_id or entity.tax_id
     if not issuer_tax_id or len(issuer_tax_id) != 14:
         missing.append("CNPJ do emissor")
@@ -153,6 +149,9 @@ def build_fiscal_snapshot(
             "legal_name": customer.legal_name,
             "tax_id": customer.tax_id,
             "address_line": customer.address_line,
+            "address_number": customer.address_number,
+            "address_complement": customer.address_complement,
+            "district": customer.district,
             "municipality_code": customer.municipality_code,
             "postal_code": customer.postal_code,
         },
@@ -392,6 +391,8 @@ def transmit_existing(
     runtime: FiscalRuntime,
     actor: ActorContext,
     issuance: FiscalIssuance,
+    *,
+    gateway: FiscalGateway | None = None,
 ) -> FiscalIssuanceResponse:
     config = session.get(FiscalEstablishmentConfig, issuance.establishment_config_id)
     if config is None:
@@ -400,19 +401,19 @@ def transmit_existing(
     # Snapshot antigo com regime incoerente nao pode ir para a SEFIN.
     # Erro de cadastro tem de virar 422 legivel, nunca 500.
     try:
-        validate_reg_trib(issuance.snapshot.get("fiscal_rules") or {})
+        validate_fiscal_config(config)
+        unsigned, identifier, _decision = build_dps(
+            issuance.snapshot,
+            series=issuance.series,
+            number=issuance.dps_number,
+            issued_at=issued_at,
+        )
     except FiscalConfigurationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    unsigned, identifier, _decision = build_dps(
-        issuance.snapshot,
-        series=issuance.series,
-        number=issuance.dps_number,
-        issued_at=issued_at,
-    )
     if identifier != issuance.dps_id:
         raise HTTPException(status_code=409, detail="Identidade DPS divergente; emissão bloqueada")
     try:
-        gateway = runtime.gateway_for(session, config)
+        gateway = gateway or runtime.gateway_for(session, config)
     except (RuntimeError, ValueError) as error:
         issuance.status = "configuration_error"
         issuance.error_category = "configuration"
@@ -523,8 +524,8 @@ def issue_billing_item(
     # Bloqueia configuracao fiscal incompleta/incoerente antes de montar XML,
     # antes de consumir numero de DPS e antes de qualquer POST na SEFIN.
     try:
-        validate_reg_trib(config.fiscal_rules or {})
-    except Exception as error:  # FiscalConfigurationError
+        validate_fiscal_config(config)
+    except FiscalConfigurationError as error:
         persist_exception(
             session,
             actor,
@@ -532,6 +533,20 @@ def issue_billing_item(
             issuance_id=None,
             category="validation",
             code="FISCAL_CONFIG_INVALID",
+            detail=str(error),
+        )
+        session.commit()
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    try:
+        gateway = runtime.gateway_for(session, config)
+    except (RuntimeError, ValueError) as error:
+        persist_exception(
+            session,
+            actor,
+            request.state.correlation_id,
+            issuance_id=None,
+            category="configuration",
+            code="CERTIFICATE_INVALID",
             detail=str(error),
         )
         session.commit()
@@ -626,7 +641,7 @@ def issue_billing_item(
         event_payload={"issuance_id": str(issuance.id), "billing_item_id": str(item.id)},
     )
     session.commit()
-    response = transmit_existing(session, runtime, actor, issuance)
+    response = transmit_existing(session, runtime, actor, issuance, gateway=gateway)
     if record:
         record = session.merge(record)
         complete_command(record, response.model_dump(mode="json"), response_status=202)

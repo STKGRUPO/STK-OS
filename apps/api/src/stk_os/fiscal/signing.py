@@ -158,8 +158,6 @@ class XmlSigner:
             len(payload),
         )
 
-        # TEMPORARIO: necessario somente para comparar o XML enviado com o XML funcional.
-        logger.info("dps_signed_xml_b64 %s", base64.b64encode(payload).decode())
         return payload
 
 

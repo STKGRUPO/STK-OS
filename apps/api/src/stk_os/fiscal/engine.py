@@ -4,6 +4,13 @@ from dataclasses import asdict, dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from stk_os.fiscal.configuration import (
+    FiscalConfigurationError,
+    required_bool,
+    required_decimal,
+    validate_fiscal_rules,
+)
+
 CENT = Decimal("0.01")
 PROFILE_PROFESSIONAL = "servicos_profissionais"
 PROFILE_NO_FEDERAL = "sem_retencoes_federais"
@@ -12,13 +19,6 @@ PROFILE_COMPANY_DEFAULT = "perfil_empresa"
 
 def q2(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
-
-
-def dec(value: Any, default: str = "0") -> Decimal:
-    try:
-        return Decimal(str(value))
-    except Exception:
-        return Decimal(default)
 
 
 @dataclass(frozen=True)
@@ -57,19 +57,27 @@ def calculate(company: dict[str, Any], service_profile: str, bruto: Decimal) -> 
     """Motor fiscal determinístico V0.2 preservado do legado validado."""
     bruto = q2(bruto)
     fiscal = company.get("fiscal", {})
-    regime = company.get("tax_regime", "lucro_presumido")
-    iss_rate = dec(fiscal.get("iss_percent", "2.00")) / 100
-    pis_rate = dec(fiscal.get("pis_percent", "0.65")) / 100
-    cofins_rate = dec(fiscal.get("cofins_percent", "3.00")) / 100
-    csll_rate = dec(fiscal.get("csll_percent", "1.00")) / 100
-    irrf_rate = dec(fiscal.get("irrf_percent", "1.50")) / 100
+    validate_fiscal_rules(fiscal)
+    regime = str(company.get("tax_regime") or "")
+    if regime != fiscal["tax_regime"]:
+        raise FiscalConfigurationError(
+            "Regime informado ao motor diverge da configuração fiscal."
+        )
+    iss_rate = required_decimal(fiscal, "iss_percent") / 100
+    if regime == "lucro_presumido":
+        pis_rate = required_decimal(fiscal, "pis_percent") / 100
+        cofins_rate = required_decimal(fiscal, "cofins_percent") / 100
+        csll_rate = required_decimal(fiscal, "csll_percent") / 100
+        irrf_rate = required_decimal(fiscal, "irrf_percent") / 100
+    else:
+        pis_rate = cofins_rate = csll_rate = irrf_rate = Decimal("0")
     iss = q2(bruto * iss_rate)
     pis = q2(bruto * pis_rate)
     cofins = q2(bruto * cofins_rate)
     csll = q2(bruto * csll_rate)
     irrf_calc = q2(bruto * irrf_rate)
     social_calc = q2(pis + cofins + csll)
-    iss_retained = bool(fiscal.get("iss_retained_by_taker", False))
+    iss_retained = required_bool(fiscal, "iss_retained_by_taker")
     iss_ret = iss if iss_retained else Decimal("0.00")
     iss_reason = (
         "Retido pelo tomador conforme perfil cadastrado do serviço."
@@ -90,10 +98,10 @@ def calculate(company: dict[str, Any], service_profile: str, bruto: Decimal) -> 
     else:
         regime_reason = f"Prestador no regime {regime.replace('_', ' ').title()}."
         enabled = service_profile != PROFILE_NO_FEDERAL
-        social_applicable = enabled and bool(fiscal.get("social_retention_applicable", True))
-        irrf_applicable = enabled and bool(fiscal.get("irrf_retention_applicable", True))
-        social_threshold = dec(fiscal.get("social_retention_min", "10.00"))
-        irrf_threshold = dec(fiscal.get("irrf_retention_min", "10.00"))
+        social_applicable = enabled and required_bool(fiscal, "social_retention_applicable")
+        irrf_applicable = enabled and required_bool(fiscal, "irrf_retention_applicable")
+        social_threshold = required_decimal(fiscal, "social_retention_min")
+        irrf_threshold = required_decimal(fiscal, "irrf_retention_min")
         social_ret = (
             social_calc if social_applicable and social_calc > social_threshold else Decimal("0.00")
         )
