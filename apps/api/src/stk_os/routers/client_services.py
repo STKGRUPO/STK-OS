@@ -6,7 +6,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from stk_os.client_service_schemas import (
     ClientServiceCreate,
@@ -75,6 +75,7 @@ def response_for(session: SessionDep, service: ClientService) -> ClientServiceRe
         service_type=service.service_type,
         recurrence=service.recurrence,
         interval_months=service.interval_months,
+        installment_total=service.installment_total,
         start_date=service.start_date,
         next_occurrence_on=service.next_occurrence_on,
         owner_actor_id=service.owner_actor_id,
@@ -92,6 +93,7 @@ def response_for(session: SessionDep, service: ClientService) -> ClientServiceRe
                 status=item.status,
                 billing_status=item.billing_status,
                 billing_item_id=item.billing_item_id,
+                installment_number=item.installment_number,
                 created_at=item.created_at,
             )
             for item in occurrences
@@ -191,7 +193,7 @@ def create_service(
     service = ClientService(
         organization_id=actor.organization_id,
         **command.model_dump(),
-        next_occurrence_on=command.start_date,
+        next_occurrence_on=None if command.installment_total else command.start_date,
         status="active",
         created_by_actor_id=actor.id,
     )
@@ -262,6 +264,26 @@ def update_service(
         setattr(service, key, value)
     if service.service_type == "recurring" and service.recurrence is None:
         raise HTTPException(status_code=422, detail="Serviço recorrente exige periodicidade")
+    if service.installment_total is not None and service.service_type != "one_time":
+        raise HTTPException(
+            status_code=422, detail="Parcelamento é permitido somente para serviço avulso"
+        )
+    highest_installment = session.scalar(
+        select(func.max(ClientServiceOccurrence.installment_number)).where(
+            ClientServiceOccurrence.client_service_id == service.id
+        )
+    )
+    if highest_installment:
+        if service.installment_total is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Serviço com parcelas programadas deve manter o total",
+            )
+        if highest_installment > service.installment_total:
+            raise HTTPException(
+                status_code=422,
+                detail="Total não pode ser menor que parcela já programada",
+            )
     record_change(
         session,
         actor=actor,
@@ -303,10 +325,66 @@ def generate_occurrences(
         return ClientServiceResponse.model_validate(cached)
     if service.status != "active":
         raise HTTPException(status_code=409, detail="Serviço inativo não gera ocorrências")
-    cursor = service.next_occurrence_on
-    if cursor is None or cursor > command.through:
-        result = response_for(session, service)
+    if service.service_type == "one_time" and service.installment_total is not None:
+        if command.scheduled_for is None or command.installment_number is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Serviço avulso parcelado exige data e número da parcela",
+            )
+        if command.through is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Serviço avulso parcelado usa scheduled_for, não through",
+            )
+        if command.installment_number > service.installment_total:
+            raise HTTPException(
+                status_code=422,
+                detail="Número da parcela não pode superar o total",
+            )
+        existing_number = session.scalar(
+            select(ClientServiceOccurrence).where(
+                ClientServiceOccurrence.client_service_id == service.id,
+                ClientServiceOccurrence.installment_number == command.installment_number,
+            )
+        )
+        existing_date = session.scalar(
+            select(ClientServiceOccurrence).where(
+                ClientServiceOccurrence.client_service_id == service.id,
+                ClientServiceOccurrence.scheduled_for == command.scheduled_for,
+            )
+        )
+        if existing_number and existing_number.scheduled_for != command.scheduled_for:
+            raise HTTPException(status_code=409, detail="Parcela já programada em outra data")
+        if existing_date and existing_date.installment_number != command.installment_number:
+            raise HTTPException(status_code=409, detail="Data já utilizada por outra parcela")
+        existing = existing_number or existing_date
+        generated = 0
+        if existing is None:
+            session.add(
+                ClientServiceOccurrence(
+                    organization_id=service.organization_id,
+                    client_service_id=service.id,
+                    scheduled_for=command.scheduled_for,
+                    due_on=command.scheduled_for,
+                    installment_number=command.installment_number,
+                    status="planned",
+                    billing_status="to_bill",
+                    owner_actor_id=service.owner_actor_id,
+                    created_by_actor_id=actor.id,
+                )
+            )
+            generated = 1
+        service.next_occurrence_on = None
+        cursor = None
     else:
+        if command.scheduled_for is not None or command.installment_number is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Data/número explícitos são exclusivos de serviço avulso parcelado",
+            )
+        if command.through is None:
+            raise HTTPException(status_code=422, detail="Informe through")
+        cursor = service.next_occurrence_on
         generated = 0
         while cursor is not None and cursor <= command.through and generated < 240:
             existing = session.scalar(
@@ -335,6 +413,9 @@ def generate_occurrences(
                 else add_months(cursor, recurrence_months(service))
             )
         service.next_occurrence_on = cursor
+    if generated == 0:
+        result = response_for(session, service)
+    else:
         session.flush()
         record_change(
             session,
@@ -494,6 +575,31 @@ def create_billing_item(
         blockers.append(
             {"code": "ISSUER_UNAVAILABLE", "reason": "Unidade sem estabelecimento emissor ativo."}
         )
+    billing_reference = None
+    if service.service_type == "one_time":
+        if service.installment_total is None:
+            if occurrence.installment_number is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Serviço não parcelado não aceita número de parcela",
+                )
+            billing_reference = {"type": "single", "position": None, "total": None}
+        else:
+            if occurrence.installment_number is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Serviço parcelado exige número da parcela",
+                )
+            if occurrence.installment_number > service.installment_total:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Número da parcela não pode superar o total",
+                )
+            billing_reference = {
+                "type": "installment",
+                "position": occurrence.installment_number,
+                "total": service.installment_total,
+            }
     snapshot = {
         "schema_version": "billing-item-snapshot.v2",
         "source": {
@@ -506,6 +612,7 @@ def create_billing_item(
         "customer": {"id": str(service.customer_company_id)},
         "currency": service.currency,
         "gross_amount": str(service.amount),
+        "billing_reference": billing_reference,
         "blockers": blockers,
     }
     first = blockers[0] if blockers else None

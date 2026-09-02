@@ -587,6 +587,17 @@ class ContractVersion(Base):
     __table_args__ = (
         UniqueConstraint("contract_id", "version_number"),
         UniqueConstraint("contract_id", "effective_from"),
+        CheckConstraint(
+            "(billing_anchor_competence IS NULL "
+            "AND billing_anchor_position IS NULL "
+            "AND billing_cycle_total IS NULL) OR "
+            "(billing_anchor_competence IS NOT NULL "
+            "AND billing_anchor_position IS NOT NULL "
+            "AND billing_cycle_total IS NOT NULL "
+            "AND billing_anchor_position >= 1 "
+            "AND billing_cycle_total >= 1 "
+            "AND billing_anchor_position <= billing_cycle_total)"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -602,6 +613,9 @@ class ContractVersion(Base):
     pricing_model: Mapped[str] = mapped_column(String(20))
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
     billing_installments: Mapped[int | None] = mapped_column(Integer)
+    billing_anchor_competence: Mapped[date | None] = mapped_column(Date)
+    billing_anchor_position: Mapped[int | None] = mapped_column(Integer)
+    billing_cycle_total: Mapped[int | None] = mapped_column(Integer)
     billing_day: Mapped[int | None] = mapped_column(Integer)
     payment_terms_days: Mapped[int | None] = mapped_column(Integer)
     invoice_description: Mapped[str | None] = mapped_column(Text)
@@ -671,6 +685,7 @@ class ClientService(TimestampMixin, Base):
             "recurrence IS NULL OR recurrence IN "
             "('monthly', 'quarterly', 'semiannual', 'annual', 'custom')"
         ),
+        CheckConstraint("installment_total IS NULL OR installment_total >= 1"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -684,6 +699,7 @@ class ClientService(TimestampMixin, Base):
     service_type: Mapped[str] = mapped_column(String(20))
     recurrence: Mapped[str | None] = mapped_column(String(20))
     interval_months: Mapped[int | None] = mapped_column(Integer)
+    installment_total: Mapped[int | None] = mapped_column(Integer)
     start_date: Mapped[date] = mapped_column(Date)
     next_occurrence_on: Mapped[date | None] = mapped_column(Date)
     owner_actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("actors.id"))
@@ -699,11 +715,18 @@ class ClientServiceOccurrence(TimestampMixin, Base):
     __tablename__ = "client_service_occurrences"
     __table_args__ = (
         UniqueConstraint("client_service_id", "scheduled_for"),
+        Index(
+            "client_service_occurrences_installment_unique",
+            "client_service_id",
+            "installment_number",
+            unique=True,
+        ),
         CheckConstraint(
             "status IN ('planned', 'preparing', 'scheduled', 'in_progress', "
             "'completed', 'to_bill', 'billed', 'closed')"
         ),
         CheckConstraint("billing_status IN ('not_ready', 'to_bill', 'item_created', 'billed')"),
+        CheckConstraint("installment_number IS NULL OR installment_number >= 1"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -713,6 +736,7 @@ class ClientServiceOccurrence(TimestampMixin, Base):
     due_on: Mapped[date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(30), default="planned")
     billing_status: Mapped[str] = mapped_column(String(20), default="to_bill")
+    installment_number: Mapped[int | None] = mapped_column(Integer)
     billing_item_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("billing_items.id", use_alter=True, name="fk_occurrence_billing_item")
     )

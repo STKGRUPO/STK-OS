@@ -65,6 +65,12 @@ class BillingItemSummary(BaseModel):
     contract_version_number: int | None
     service_name: str | None = None
     service_description: str | None = None
+    origin_type: str
+    origin_label: str
+    reference_type: str | None
+    reference_position: int | None
+    reference_total: int | None
+    reference_label: str | None
     competence_month: str
     business_unit_id: uuid.UUID
     business_unit_name: str

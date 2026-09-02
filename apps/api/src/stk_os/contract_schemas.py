@@ -46,6 +46,9 @@ class ContractVersionCreate(StrictModel):
     pricing_model: Literal["monthly", "annual", "project", "per_service", "other"]
     amount: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
     billing_installments: int | None = Field(default=None, gt=0, le=120)
+    billing_anchor_competence: date | None = None
+    billing_anchor_position: int | None = Field(default=None, ge=1)
+    billing_cycle_total: int | None = Field(default=None, ge=1)
     billing_day: int | None = Field(default=None, ge=1, le=31)
     payment_terms_days: int | None = Field(default=None, ge=0, le=365)
     invoice_description: str | None = Field(default=None, max_length=2000)
@@ -72,6 +75,22 @@ class ContractVersionCreate(StrictModel):
 
     @model_validator(mode="after")
     def validate_snapshot(self) -> ContractVersionCreate:
+        cycle = (
+            self.billing_anchor_competence,
+            self.billing_anchor_position,
+            self.billing_cycle_total,
+        )
+        if any(value is not None for value in cycle) and not all(
+            value is not None for value in cycle
+        ):
+            raise ValueError("Âncora do ciclo exige competência, posição e total")
+        if self.billing_anchor_competence is not None:
+            if self.billing_frequency != "monthly":
+                raise ValueError("Âncora do ciclo é permitida somente para cobrança mensal")
+            if self.billing_anchor_competence.day != 1:
+                raise ValueError("Competência-âncora deve ser o primeiro dia do mês")
+            if self.billing_anchor_position > self.billing_cycle_total:
+                raise ValueError("Posição inicial não pode superar o total do ciclo")
         if not any(item.is_active for item in self.services):
             raise ValueError("A versão deve possuir ao menos um serviço ativo")
         primary = [
@@ -148,6 +167,9 @@ class ContractVersionResponse(BaseModel):
     pricing_model: str
     amount: Decimal
     billing_installments: int | None
+    billing_anchor_competence: date | None
+    billing_anchor_position: int | None
+    billing_cycle_total: int | None
     billing_day: int | None
     payment_terms_days: int | None
     invoice_description: str | None

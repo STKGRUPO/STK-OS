@@ -32,6 +32,9 @@ from stk_os.fiscal.sequence import (
 )
 from stk_os.fiscal_schemas import (
     FiscalAttemptResponse,
+    FiscalBatchIssueRequest,
+    FiscalBatchIssueResponse,
+    FiscalBatchItemResult,
     FiscalDocumentResponse,
     FiscalIssuanceResponse,
     FiscalReconcileRequest,
@@ -699,28 +702,14 @@ def transmit_existing(
     return response_for(session, issuance)
 
 
-@router.post(
-    "/billing/items/{item_id}/issue", response_model=FiscalIssuanceResponse, status_code=202
-)
-def issue_billing_item(
-    item_id: uuid.UUID,
+def issue_item_core(
+    *,
+    item: BillingItem,
     request: Request,
-    session: SessionDep,
-    runtime: RuntimeDep,
-    idempotency_key: IdempotencyHeader,
-    actor: Annotated[ActorContext, Depends(require_permission("fiscal:issue"))],
+    session: Session,
+    runtime: FiscalRuntime,
+    actor: ActorContext,
 ) -> FiscalIssuanceResponse:
-    item = get_item(session, actor, item_id, "fiscal:issue")
-    record, cached = begin_command(
-        session,
-        actor=actor,
-        command_name="fiscal.issue_billing_item.v1",
-        idempotency_key=idempotency_key,
-        payload={"billing_item_id": str(item.id)},
-        correlation_id=request.state.correlation_id,
-    )
-    if cached:
-        return FiscalIssuanceResponse.model_validate(cached)
     existing = session.scalar(
         select(FiscalIssuance).where(FiscalIssuance.billing_item_id == item.id).with_for_update()
     )
@@ -734,9 +723,6 @@ def issue_billing_item(
             response = transmit_existing(session, runtime, actor, existing)
         else:
             response = response_for(session, existing)
-        if record:
-            complete_command(record, response.model_dump(mode="json"), response_status=202)
-            session.commit()
         return response
     if item.status != "ready":
         raise HTTPException(
@@ -889,10 +875,160 @@ def issue_billing_item(
         event_payload={"issuance_id": str(issuance.id), "billing_item_id": str(item.id)},
     )
     session.commit()
-    response = transmit_existing(session, runtime, actor, issuance, gateway=gateway)
+    return transmit_existing(session, runtime, actor, issuance, gateway=gateway)
+
+
+@router.post(
+    "/billing/items/{item_id}/issue", response_model=FiscalIssuanceResponse, status_code=202
+)
+def issue_billing_item(
+    item_id: uuid.UUID,
+    request: Request,
+    session: SessionDep,
+    runtime: RuntimeDep,
+    idempotency_key: IdempotencyHeader,
+    actor: Annotated[ActorContext, Depends(require_permission("fiscal:issue"))],
+) -> FiscalIssuanceResponse:
+    item = get_item(session, actor, item_id, "fiscal:issue")
+    record, cached = begin_command(
+        session,
+        actor=actor,
+        command_name="fiscal.issue_billing_item.v1",
+        idempotency_key=idempotency_key,
+        payload={"billing_item_id": str(item.id)},
+        correlation_id=request.state.correlation_id,
+    )
+    if cached:
+        return FiscalIssuanceResponse.model_validate(cached)
+    response = issue_item_core(
+        item=item,
+        request=request,
+        session=session,
+        runtime=runtime,
+        actor=actor,
+    )
     if record:
         record = session.merge(record)
         complete_command(record, response.model_dump(mode="json"), response_status=202)
+        session.commit()
+    return response
+
+
+@router.post("/billing/items/issue-batch", response_model=FiscalBatchIssueResponse)
+def issue_billing_items_batch(
+    command: FiscalBatchIssueRequest,
+    request: Request,
+    session: SessionDep,
+    runtime: RuntimeDep,
+    idempotency_key: IdempotencyHeader,
+    actor: Annotated[ActorContext, Depends(require_permission("fiscal:issue"))],
+) -> FiscalBatchIssueResponse:
+    item_ids = command.billing_item_ids
+    if len(item_ids) != len(set(item_ids)):
+        raise HTTPException(status_code=422, detail="A lista contém billing items duplicados")
+
+    # Todo o lote é validado antes do primeiro efeito externo.
+    items = [get_item(session, actor, item_id, "fiscal:issue") for item_id in item_ids]
+    competences = {item.competence_month for item in items}
+    issuers = {item.issuer_establishment_id for item in items}
+    if len(competences) != 1:
+        raise HTTPException(status_code=422, detail="Todos os itens devem ter a mesma competência")
+    if None in issuers or len(issuers) != 1:
+        raise HTTPException(status_code=422, detail="Todos os itens devem ter o mesmo emissor")
+
+    completed_issuances: dict[uuid.UUID, FiscalIssuance] = {}
+    for item in items:
+        if item.status not in {"ready", "completed"}:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Item {item.id} não está pronto nem concluído",
+            )
+        if item.status == "completed":
+            issuance = session.scalar(
+                select(FiscalIssuance).where(FiscalIssuance.billing_item_id == item.id)
+            )
+            if issuance is None or issuance.status not in {"completed", "document_error"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Item concluído {item.id} não possui emissão autorizada",
+                )
+            completed_issuances[item.id] = issuance
+
+    payload = {"billing_item_ids": [str(item_id) for item_id in item_ids]}
+    record, cached = begin_command(
+        session,
+        actor=actor,
+        command_name="fiscal.issue_billing_items_batch.v1",
+        idempotency_key=idempotency_key,
+        payload=payload,
+        correlation_id=request.state.correlation_id,
+    )
+    if cached:
+        return FiscalBatchIssueResponse.model_validate(cached)
+
+    results: list[FiscalBatchItemResult] = []
+    for item in items:
+        if item.id in completed_issuances:
+            results.append(
+                FiscalBatchItemResult(
+                    billing_item_id=item.id,
+                    outcome="reused_completed",
+                    issuance=response_for(session, completed_issuances[item.id]),
+                )
+            )
+            continue
+        try:
+            response = issue_item_core(
+                item=item,
+                request=request,
+                session=session,
+                runtime=runtime,
+                actor=actor,
+            )
+            outcome = (
+                "completed"
+                if response.status in {"completed", "document_error"}
+                else "failed"
+            )
+            results.append(
+                FiscalBatchItemResult(
+                    billing_item_id=item.id,
+                    outcome=outcome,
+                    issuance=response,
+                    error_code=response.error_code if outcome == "failed" else None,
+                    error_message=response.error_message if outcome == "failed" else None,
+                )
+            )
+        except HTTPException as error:
+            session.rollback()
+            results.append(
+                FiscalBatchItemResult(
+                    billing_item_id=item.id,
+                    outcome="failed",
+                    error_code=f"HTTP_{error.status_code}",
+                    error_message=str(error.detail),
+                )
+            )
+        except Exception:
+            session.rollback()
+            logger.exception("fiscal_batch_item_failed billing_item_id=%s", item.id)
+            results.append(
+                FiscalBatchItemResult(
+                    billing_item_id=item.id,
+                    outcome="failed",
+                    error_code="INTERNAL_ERROR",
+                    error_message="Falha interna ao emitir o item",
+                )
+            )
+
+    response = FiscalBatchIssueResponse(
+        competence_month=next(iter(competences)).strftime("%Y-%m"),
+        issuer_establishment_id=next(iter(issuers)),
+        results=results,
+    )
+    if record:
+        record = session.merge(record)
+        complete_command(record, response.model_dump(mode="json"), response_status=200)
         session.commit()
     return response
 
@@ -1314,6 +1450,7 @@ def create_one_time_billing(
         service_type="one_time",
         recurrence=None,
         interval_months=None,
+        installment_total=command.installment_total,
         start_date=command.service_date,
         next_occurrence_on=None,
         owner_actor_id=actor.id,
@@ -1333,6 +1470,7 @@ def create_one_time_billing(
         due_on=command.service_date,
         status="to_bill",
         billing_status="item_created",
+        installment_number=command.installment_number,
         owner_actor_id=actor.id,
         created_by_actor_id=actor.id,
     )
@@ -1368,6 +1506,15 @@ def create_one_time_billing(
         "issuer": {"id": str(command.issuer_establishment_id)},
         "currency": command.currency,
         "gross_amount": str(command.amount),
+        "billing_reference": (
+            {
+                "type": "installment",
+                "position": command.installment_number,
+                "total": command.installment_total,
+            }
+            if command.installment_total is not None
+            else {"type": "single", "position": None, "total": None}
+        ),
         "blockers": blockers,
     }
     first = blockers[0] if blockers else None

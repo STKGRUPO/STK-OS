@@ -13,6 +13,7 @@ from conftest import (
     ESTABLISHMENT_ID,
     LEGAL_ENTITY_ID,
     MR_PRODUCT_ID,
+    SECOND_ESTABLISHMENT_ID,
     UNIT_ID,
 )
 from fastapi.testclient import TestClient
@@ -54,6 +55,7 @@ def command_headers(headers: dict[str, str], key: str) -> dict[str, str]:
 class FakeGateway:
     def __init__(self) -> None:
         self.issue_status = "completed"
+        self.issue_statuses: list[str] = []
         self.reconcile_status = "completed"
         self.issue_calls = 0
         self.reconcile_calls = 0
@@ -107,7 +109,8 @@ class FakeGateway:
         if self.issue_entered and self.issue_release:
             self.issue_entered.set()
             assert self.issue_release.wait(timeout=5)
-        return self.result(self.issue_status, dps_id)
+        status = self.issue_statuses.pop(0) if self.issue_statuses else self.issue_status
+        return self.result(status, dps_id)
 
     def reconcile(self, *, query_base_url: str, dps_id: str) -> ProviderResult:
         assert query_base_url.startswith("https://")
@@ -170,6 +173,21 @@ def create_contract_item(
         f"/api/v1/billing/items?competence_month={competence:%Y-%m}", headers=headers
     ).json()
     return next(item for item in items if item["customer_name"] == f"Faturamento {suffix}")
+
+
+def create_contract_items(
+    client: TestClient, headers: dict[str, str], suffixes: tuple[str, ...]
+) -> list[dict[str, object]]:
+    competence = month_start()
+    for suffix in suffixes:
+        create_billable_contract(client, headers, suffix=suffix, start_on=competence)
+    run = generate(client, headers, key=f"run-{'-'.join(suffixes)}", competence=competence)
+    assert run.status_code == 201, run.text
+    items = client.get(
+        f"/api/v1/billing/items?competence_month={competence:%Y-%m}", headers=headers
+    ).json()
+    by_customer = {item["customer_name"]: item for item in items}
+    return [by_customer[f"Faturamento {suffix}"] for suffix in suffixes]
 
 
 def issue(client: TestClient, headers: dict[str, str], item_id: str, key: str):
@@ -682,11 +700,162 @@ def test_recurring_without_contract_and_one_time_flow_are_issued(
     )
     assert one_time.status_code == 201, one_time.text
     assert one_time.json()["billing_status"] == "ready"
+    one_time_item = client.get(
+        f"/api/v1/billing/items/{one_time.json()['billing_item_id']}", headers=admin_headers
+    ).json()
+    assert one_time_item["origin_label"] == "Serviço avulso"
+    assert one_time_item["reference_type"] == "single"
+    assert one_time_item["reference_label"] == "Única"
+    installment = client.post(
+        "/api/v1/billing/one-time",
+        headers=command_headers(admin_headers, "one-time-installment-fiscal"),
+        json={
+            "business_unit_id": str(UNIT_ID),
+            "customer_company_id": customer["id"],
+            "product_service_id": str(MR_PRODUCT_ID),
+            "service_name": "Laudo parcelado",
+            "description": "Segunda parcela sintética",
+            "reference": "OS-AVULSA-PARCELA-002",
+            "service_date": date.today().isoformat(),
+            "amount": "225.00",
+            "issuer_establishment_id": str(ESTABLISHMENT_ID),
+            "installment_number": 2,
+            "installment_total": 3,
+        },
+    )
+    assert installment.status_code == 201, installment.text
+    installment_item = client.get(
+        f"/api/v1/billing/items/{installment.json()['billing_item_id']}",
+        headers=admin_headers,
+    ).json()
+    assert installment_item["reference_type"] == "installment"
+    assert installment_item["reference_position"] == 2
+    assert installment_item["reference_total"] == 3
+    assert installment_item["reference_label"] == "Parcela 2/3"
     emitted = issue(
         client, admin_headers, one_time.json()["billing_item_id"], "issue-one-time-fiscal"
     )
     assert emitted.json()["status"] == "completed"
     assert fake_gateway.issue_calls == 2
+
+
+def test_batch_issues_ready_items_and_reuses_completed_without_retransmission(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+) -> None:
+    items = create_contract_items(client, admin_headers, ("BATCH-A", "BATCH-B"))
+    payload = {"billing_item_ids": [item["id"] for item in items]}
+    first = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-two-ready"),
+        json=payload,
+    )
+    assert first.status_code == 200, first.text
+    assert [item["outcome"] for item in first.json()["results"]] == [
+        "completed",
+        "completed",
+    ]
+    assert fake_gateway.issue_calls == 2
+
+    replay = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-two-ready"),
+        json=payload,
+    )
+    assert replay.status_code == 200
+    assert replay.json() == first.json()
+    assert fake_gateway.issue_calls == 2
+
+    reused = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-two-completed"),
+        json=payload,
+    )
+    assert reused.status_code == 200, reused.text
+    assert [item["outcome"] for item in reused.json()["results"]] == [
+        "reused_completed",
+        "reused_completed",
+    ]
+    assert fake_gateway.issue_calls == 2
+
+
+def test_batch_continues_after_individual_fiscal_failure(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+) -> None:
+    items = create_contract_items(client, admin_headers, ("BATCH-FAIL", "BATCH-NEXT"))
+    fake_gateway.issue_statuses = ["rejected", "completed"]
+    response = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-continue-after-failure"),
+        json={"billing_item_ids": [item["id"] for item in items]},
+    )
+    assert response.status_code == 200, response.text
+    assert [item["outcome"] for item in response.json()["results"]] == [
+        "failed",
+        "completed",
+    ]
+    assert response.json()["results"][0]["error_code"] == "E_FISCAL_SYNTHETIC"
+    assert fake_gateway.issue_calls == 2
+
+
+def test_batch_preflight_rejects_duplicates_mixed_fields_and_incompatible_status(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    items = create_contract_items(client, admin_headers, ("PREFLIGHT-A", "PREFLIGHT-B"))
+    first_id, second_id = (uuid.UUID(item["id"]) for item in items)
+
+    duplicate = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-duplicate"),
+        json={"billing_item_ids": [str(first_id), str(first_id)]},
+    )
+    assert duplicate.status_code == 422
+
+    with session_factory() as session:
+        second = session.get(BillingItem, second_id)
+        assert second is not None
+        original_competence = second.competence_month
+        second.competence_month = date(2026, 10, 1)
+        session.commit()
+    mixed_competence = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-mixed-competence"),
+        json={"billing_item_ids": [str(first_id), str(second_id)]},
+    )
+    assert mixed_competence.status_code == 422
+
+    with session_factory() as session:
+        second = session.get(BillingItem, second_id)
+        assert second is not None
+        second.competence_month = original_competence
+        second.issuer_establishment_id = SECOND_ESTABLISHMENT_ID
+        session.commit()
+    mixed_issuer = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-mixed-issuer"),
+        json={"billing_item_ids": [str(first_id), str(second_id)]},
+    )
+    assert mixed_issuer.status_code == 422
+
+    with session_factory() as session:
+        second = session.get(BillingItem, second_id)
+        assert second is not None
+        second.issuer_establishment_id = ESTABLISHMENT_ID
+        second.status = "blocked"
+        session.commit()
+    incompatible = client.post(
+        "/api/v1/billing/items/issue-batch",
+        headers=command_headers(admin_headers, "batch-incompatible-status"),
+        json={"billing_item_ids": [str(first_id), str(second_id)]},
+    )
+    assert incompatible.status_code == 409
+    assert fake_gateway.issue_calls == 0
 
 
 def test_known_fiscal_error_is_auditable_and_not_retried(

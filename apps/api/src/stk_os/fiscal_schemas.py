@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class FiscalDocumentResponse(BaseModel):
@@ -73,6 +73,19 @@ class OneTimeBillingCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2)
     currency: Literal["BRL"] = "BRL"
     issuer_establishment_id: uuid.UUID
+    installment_total: int | None = Field(default=None, ge=2, le=120)
+    installment_number: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_installment(self) -> OneTimeBillingCreate:
+        if (self.installment_total is None) != (self.installment_number is None):
+            raise ValueError("Parcela exige número e total")
+        if (
+            self.installment_total is not None
+            and self.installment_number > self.installment_total
+        ):
+            raise ValueError("Número da parcela não pode superar o total")
+        return self
 
 
 class OneTimeBillingResponse(BaseModel):
@@ -81,3 +94,23 @@ class OneTimeBillingResponse(BaseModel):
     billing_item_id: uuid.UUID
     billing_status: str
     fiscal_issuance: FiscalIssuanceResponse | None = None
+
+
+class FiscalBatchIssueRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    billing_item_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+
+
+class FiscalBatchItemResult(BaseModel):
+    billing_item_id: uuid.UUID
+    outcome: Literal["completed", "reused_completed", "failed"]
+    issuance: FiscalIssuanceResponse | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class FiscalBatchIssueResponse(BaseModel):
+    competence_month: str
+    issuer_establishment_id: uuid.UUID
+    results: list[FiscalBatchItemResult]

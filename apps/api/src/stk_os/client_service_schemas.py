@@ -25,6 +25,7 @@ class ClientServiceCreate(BaseModel):
     service_type: Literal["recurring", "one_time"]
     recurrence: Recurrence | None = None
     interval_months: int | None = Field(default=None, ge=1, le=120)
+    installment_total: int | None = Field(default=None, ge=2, le=120)
     start_date: date
     owner_actor_id: uuid.UUID
     amount: Decimal = Field(ge=0, max_digits=18, decimal_places=2)
@@ -36,6 +37,8 @@ class ClientServiceCreate(BaseModel):
     def recurrence_matches_type(self) -> ClientServiceCreate:
         if self.service_type == "one_time" and (self.recurrence or self.interval_months):
             raise ValueError("Serviço pontual não possui recorrência")
+        if self.installment_total is not None and self.service_type != "one_time":
+            raise ValueError("Parcelamento é permitido somente para serviço avulso")
         if self.service_type == "recurring" and self.recurrence is None:
             raise ValueError("Serviço recorrente exige periodicidade")
         if self.recurrence == "custom" and self.interval_months is None:
@@ -51,6 +54,7 @@ class ClientServiceUpdate(BaseModel):
     contract_id: uuid.UUID | None = None
     recurrence: Recurrence | None = None
     interval_months: int | None = Field(default=None, ge=1, le=120)
+    installment_total: int | None = Field(default=None, ge=2, le=120)
     owner_actor_id: uuid.UUID | None = None
     amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
     operational_lead_days: int | None = Field(default=None, ge=0, le=365)
@@ -59,7 +63,15 @@ class ClientServiceUpdate(BaseModel):
 
 
 class OccurrenceGenerate(BaseModel):
-    through: date
+    through: date | None = None
+    scheduled_for: date | None = None
+    installment_number: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def has_generation_target(self) -> OccurrenceGenerate:
+        if self.through is None and self.scheduled_for is None:
+            raise ValueError("Informe through ou scheduled_for")
+        return self
 
 
 class OccurrenceUpdate(BaseModel):
@@ -73,6 +85,7 @@ class ClientServiceOccurrenceResponse(BaseModel):
     status: str
     billing_status: str
     billing_item_id: uuid.UUID | None
+    installment_number: int | None
     created_at: datetime
 
 
@@ -90,6 +103,7 @@ class ClientServiceResponse(BaseModel):
     service_type: str
     recurrence: str | None
     interval_months: int | None
+    installment_total: int | None
     start_date: date
     next_occurrence_on: date | None
     owner_actor_id: uuid.UUID

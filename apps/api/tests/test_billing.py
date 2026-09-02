@@ -33,6 +33,9 @@ def create_billable_contract(
     start_on: date,
     amount: str = "12000.00",
     pricing_model: str = "annual",
+    billing_anchor_competence: date | None = None,
+    billing_anchor_position: int | None = None,
+    billing_cycle_total: int | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     tax_suffix = int(hashlib.sha256(suffix.encode()).hexdigest()[:8], 16) % 1_000_000
     customer_response = client.post(
@@ -88,6 +91,11 @@ def create_billable_contract(
             "pricing_model": pricing_model,
             "amount": amount,
             "billing_installments": 12 if pricing_model == "annual" else None,
+            "billing_anchor_competence": (
+                billing_anchor_competence.isoformat() if billing_anchor_competence else None
+            ),
+            "billing_anchor_position": billing_anchor_position,
+            "billing_cycle_total": billing_cycle_total,
             "billing_day": 1,
             "payment_terms_days": 15,
             "invoice_description": "Serviço recorrente sintético.",
@@ -172,6 +180,8 @@ def test_generate_competence_is_deterministic_idempotent_and_audited(
     assert item["gross_amount"] == "1000.00"
     assert item["status"] == "ready"
     assert item["issuer_establishment_id"] == str(ESTABLISHMENT_ID)
+    assert item["reference_type"] is None
+    assert item["reference_label"] is None
 
     detail = client.get(f"/api/v1/billing/items/{item['id']}", headers=admin_headers)
     assert detail.status_code == 200
@@ -200,6 +210,69 @@ def test_generate_competence_is_deterministic_idempotent_and_audited(
         )
         assert ready_event is not None
         assert "snapshot" not in ready_event.payload
+
+
+def test_contract_cycle_reference_uses_civil_months_and_stops_after_total(
+    client: TestClient, admin_headers: dict[str, str]
+) -> None:
+    anchor = date(2026, 9, 1)
+    create_billable_contract(
+        client,
+        admin_headers,
+        suffix="CYCLE-10-12",
+        start_on=anchor,
+        pricing_model="monthly",
+        amount="900.00",
+        billing_anchor_competence=anchor,
+        billing_anchor_position=10,
+        billing_cycle_total=12,
+    )
+
+    for offset, expected_position in enumerate((10, 11, 12)):
+        competence = date(2026, 9 + offset, 1)
+        run = generate(
+            client,
+            admin_headers,
+            key=f"billing-cycle-{expected_position}",
+            competence=competence,
+        )
+        assert run.status_code == 201, run.text
+        assert run.json()["metrics"]["created"] == 1
+        items = client.get(
+            f"/api/v1/billing/items?competence_month={competence:%Y-%m}",
+            headers=admin_headers,
+        ).json()
+        assert len(items) == 1
+        assert items[0]["origin_label"] == "Contrato"
+        assert items[0]["reference_type"] == "contract_cycle"
+        assert items[0]["reference_position"] == expected_position
+        assert items[0]["reference_total"] == 12
+        assert items[0]["reference_label"] == f"Mês {expected_position}/12"
+        detail = client.get(
+            f"/api/v1/billing/items/{items[0]['id']}", headers=admin_headers
+        ).json()
+        assert detail["snapshot"]["billing_reference"] == {
+            "type": "contract_cycle",
+            "position": expected_position,
+            "total": 12,
+        }
+
+    after_cycle = generate(
+        client,
+        admin_headers,
+        key="billing-cycle-after-total",
+        competence=date(2026, 12, 1),
+    )
+    assert after_cycle.status_code == 201, after_cycle.text
+    assert after_cycle.json()["metrics"]["created"] == 0
+    assert after_cycle.json()["metrics"]["not_eligible"] == 1
+    assert after_cycle.json()["contracts"][0]["reason_code"] == "BILLING_CYCLE_COMPLETED"
+    assert (
+        client.get(
+            "/api/v1/billing/items?competence_month=2026-12", headers=admin_headers
+        ).json()
+        == []
+    )
 
 
 def test_same_idempotency_key_with_divergent_payload_is_rejected(

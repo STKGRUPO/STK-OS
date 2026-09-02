@@ -151,6 +151,49 @@ def calculate_gross(version: ContractVersion) -> tuple[Decimal | None, tuple[str
     )
 
 
+def contract_cycle_reference(
+    version: ContractVersion | None, competence: date
+) -> tuple[dict[str, int | str] | None, tuple[str, str] | None]:
+    if version is None:
+        return None, None
+    cycle = (
+        version.billing_anchor_competence,
+        version.billing_anchor_position,
+        version.billing_cycle_total,
+    )
+    if not any(value is not None for value in cycle):
+        return None, None
+    if not all(value is not None for value in cycle):
+        return None, (
+            "INVALID_BILLING_CYCLE_ANCHOR",
+            "A âncora do ciclo contratual está incompleta.",
+        )
+    if version.billing_frequency != "monthly":
+        return None, (
+            "UNSUPPORTED_BILLING_CYCLE_FREQUENCY",
+            "A referência Mês X/Y exige frequência mensal.",
+        )
+    anchor = version.billing_anchor_competence
+    position = version.billing_anchor_position + (
+        (competence.year - anchor.year) * 12 + competence.month - anchor.month
+    )
+    if position < 1:
+        return None, (
+            "BILLING_CYCLE_NOT_STARTED",
+            "A competência é anterior ao início configurado do ciclo contratual.",
+        )
+    if position > version.billing_cycle_total:
+        return None, (
+            "BILLING_CYCLE_COMPLETED",
+            "O ciclo contratual configurado já foi integralmente faturado.",
+        )
+    return {
+        "type": "contract_cycle",
+        "position": position,
+        "total": version.billing_cycle_total,
+    }, None
+
+
 def snapshot_for(
     session: Session,
     *,
@@ -161,6 +204,7 @@ def snapshot_for(
     operational_state: str,
     gross_amount: Decimal | None,
     blockers: list[dict[str, str]],
+    billing_reference: dict[str, int | str] | None,
 ) -> dict[str, Any]:
     settings = get_settings()
     company = session.get(Company, contract.customer_company_id)
@@ -270,11 +314,14 @@ def snapshot_for(
         "gross_amount": str(gross_amount) if gross_amount is not None else None,
         "services": services,
         "financial_contacts": contacts,
+        "billing_reference": billing_reference,
         "blockers": blockers,
     }
 
 
-def service_labels(item: BillingItem, version: ContractVersion | None) -> tuple[str | None, str | None]:
+def service_labels(
+    item: BillingItem, version: ContractVersion | None
+) -> tuple[str | None, str | None]:
     """Extrai nome/descricao do servico a partir do snapshot ja gravado no item."""
     snapshot = item.snapshot if isinstance(item.snapshot, dict) else {}
 
@@ -308,6 +355,28 @@ def service_labels(item: BillingItem, version: ContractVersion | None) -> tuple[
     return None, None
 
 
+def billing_reference_fields(
+    item: BillingItem,
+) -> tuple[str, str, str | None, int | None, int | None, str | None]:
+    if item.contract_id is not None:
+        origin_type, origin_label = "contract", "Contrato"
+    else:
+        origin_type, origin_label = "service", "Serviço avulso"
+    reference = item.snapshot.get("billing_reference") or {}
+    reference_type = reference.get("type")
+    position = reference.get("position")
+    total = reference.get("total")
+    if reference_type == "contract_cycle" and position is not None and total is not None:
+        label = f"Mês {position}/{total}"
+    elif reference_type == "installment" and position is not None and total is not None:
+        label = f"Parcela {position}/{total}"
+    elif reference_type == "single":
+        label = "Única"
+    else:
+        label = None
+    return origin_type, origin_label, reference_type, position, total, label
+
+
 def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
     contract = session.get(Contract, item.contract_id) if item.contract_id else None
     version = (
@@ -321,6 +390,9 @@ def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
         else None
     )
     service_name, service_description = service_labels(item, version)
+    origin_type, origin_label, reference_type, position, total, reference_label = (
+        billing_reference_fields(item)
+    )
     return BillingItemSummary(
         id=item.id,
         created_by_run_id=item.created_by_run_id,
@@ -333,6 +405,12 @@ def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
         contract_version_number=version.version_number if version else None,
         service_name=service_name,
         service_description=service_description,
+        origin_type=origin_type,
+        origin_label=origin_label,
+        reference_type=reference_type,
+        reference_position=position,
+        reference_total=total,
+        reference_label=reference_label,
         competence_month=competence_label(item.competence_month),
         business_unit_id=item.business_unit_id,
         business_unit_name=unit.name if unit else "Unidade indisponível",
@@ -422,6 +500,7 @@ def create_item_for_contract(
     contract: Contract,
     competence: date,
     competence_end: date,
+    billing_reference: dict[str, int | str] | None,
 ) -> tuple[BillingItem, bool]:
     existing = session.scalar(
     select(BillingItem).where(
@@ -550,6 +629,7 @@ def create_item_for_contract(
         operational_state=operational_state,
         gross_amount=gross_amount,
         blockers=blockers,
+        billing_reference=billing_reference,
     )
     status = "blocked" if blockers else "ready"
     first_blocker = blockers[0] if blockers else None
@@ -761,24 +841,34 @@ def generate_competence(
                         f"O contrato estava {state} no início e durante toda a competência.",
                     )
                 else:
-                    item, created = create_item_for_contract(
-                        session,
-                        actor=actor,
-                        run=run,
-                        contract=contract,
-                        competence=competence,
-                        competence_end=competence_end,
+                    version = version_at(session, contract.id, competence)
+                    billing_reference, cycle_blocker = contract_cycle_reference(
+                        version, competence
                     )
-                    entry = BillingRunContract(
-                        billing_run_id=run.id,
-                        contract_id=contract.id,
-                        billing_item_id=item.id,
-                        outcome="created" if created else "reused",
-                    )
-                    counters["created" if created else "reused"] += 1
-                    counters[item.status] += 1
-                    session.add(entry)
-                    continue
+                    if cycle_blocker:
+                        entry = not_eligible(
+                            run, contract, cycle_blocker[0], cycle_blocker[1]
+                        )
+                    else:
+                        item, created = create_item_for_contract(
+                            session,
+                            actor=actor,
+                            run=run,
+                            contract=contract,
+                            competence=competence,
+                            competence_end=competence_end,
+                            billing_reference=billing_reference,
+                        )
+                        entry = BillingRunContract(
+                            billing_run_id=run.id,
+                            contract_id=contract.id,
+                            billing_item_id=item.id,
+                            outcome="created" if created else "reused",
+                        )
+                        counters["created" if created else "reused"] += 1
+                        counters[item.status] += 1
+                        session.add(entry)
+                        continue
             counters["not_eligible"] += 1
             session.add(entry)
 

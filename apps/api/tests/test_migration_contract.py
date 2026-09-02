@@ -177,3 +177,23 @@ def test_legal_entity_contacts_migration_is_additive() -> None:
     assert "DROP " not in normalized
     assert "DELETE " not in normalized
     assert "UPDATE " not in normalized
+
+
+def test_billing_reference_anchor_migration_is_additive_and_consistent() -> None:
+    delta = (ROOT / "database/migrations/027_billing_reference_anchors.sql").read_text(
+        encoding="utf-8"
+    )
+    normalized = delta.upper()
+
+    for column in (
+        "BILLING_ANCHOR_COMPETENCE",
+        "BILLING_ANCHOR_POSITION",
+        "BILLING_CYCLE_TOTAL",
+        "INSTALLMENT_TOTAL",
+        "INSTALLMENT_NUMBER",
+    ):
+        assert column in normalized
+    assert "BILLING_ANCHOR_POSITION <= BILLING_CYCLE_TOTAL" in normalized
+    assert "CLIENT_SERVICE_OCCURRENCES_INSTALLMENT_UNIQUE" in normalized
+    assert "DROP " not in normalized
+    assert "DELETE " not in normalized
