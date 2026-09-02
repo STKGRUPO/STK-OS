@@ -13,6 +13,35 @@ from psycopg import errors
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS = ROOT / "database" / "migrations"
 SEEDS = ROOT / "database" / "seeds"
+EXPECTED_MIGRATIONS = [
+    "001_foundation.sql",
+    "002_append_only_guards.sql",
+    "003_crm_vertical.sql",
+    "004_crm_append_only_guards.sql",
+    "005_versioned_contracts.sql",
+    "006_billing_core.sql",
+    "007_client_services_identity.sql",
+    "008_fiscal_issuance.sql",
+    "009_identity_password_state.sql",
+    "010_public_registration_role.sql",
+    "011_basic_administration_profiles.sql",
+    "012_permission_catalog_and_admin.sql",
+    "013_business_unit_autoprovision.sql",
+    "014_fiscal_certificates.sql",
+    "015_certificate_material.sql",
+    "016_billing_item_removals.sql",
+    "017_service_code_catalog.sql",
+    "018_billing_item_revalidation.sql",
+    "019_company_tax_regime.sql",
+    "020_legal_entity_tax_regime.sql",
+    "021_certificate_material_columns.sql",
+    "022_company_structured_address.sql",
+    "023_fiscal_document_content.sql",
+    "024_fiscal_document_content_hydration.sql",
+    "025_fiscal_establishment_contacts.sql",
+    "026_legal_entity_contacts.sql",
+    "027_billing_reference_anchors.sql",
+]
 
 
 def postgres_test_url() -> str:
@@ -49,16 +78,7 @@ def apply_foundation(connection: psycopg.Connection[tuple[object, ...]]) -> list
 def test_postgres_foundation_invariants() -> None:
     with psycopg.connect(postgres_test_url(), autocommit=True) as connection:
         applied = apply_foundation(connection)
-        assert applied == [
-            "001_foundation.sql",
-            "002_append_only_guards.sql",
-            "003_crm_vertical.sql",
-            "004_crm_append_only_guards.sql",
-            "005_versioned_contracts.sql",
-            "006_billing_core.sql",
-            "007_client_services_identity.sql",
-            "008_fiscal_issuance.sql",
-        ]
+        assert applied == EXPECTED_MIGRATIONS
 
         expected_checksums = [
             (path.name, hashlib.sha256(path.read_bytes()).hexdigest())
@@ -121,6 +141,69 @@ def test_postgres_foundation_invariants() -> None:
             "fiscal_attempts",
             "fiscal_documents",
         } <= tables
+
+        billing_reference_columns = set(
+            connection.execute(
+                """
+                SELECT table_name, column_name, data_type, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND (table_name, column_name) IN (
+                      ('contract_versions', 'billing_anchor_competence'),
+                      ('contract_versions', 'billing_anchor_position'),
+                      ('contract_versions', 'billing_cycle_total'),
+                      ('client_services', 'installment_total'),
+                      ('client_service_occurrences', 'installment_number')
+                  )
+                """
+            ).fetchall()
+        )
+        assert billing_reference_columns == {
+            ("contract_versions", "billing_anchor_competence", "date", "YES"),
+            ("contract_versions", "billing_anchor_position", "integer", "YES"),
+            ("contract_versions", "billing_cycle_total", "integer", "YES"),
+            ("client_services", "installment_total", "integer", "YES"),
+            ("client_service_occurrences", "installment_number", "integer", "YES"),
+        }
+        reference_constraints = {
+            row[0]: row[1]
+            for row in connection.execute(
+                """
+                SELECT conname, pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid IN (
+                    'contract_versions'::regclass,
+                    'client_services'::regclass,
+                    'client_service_occurrences'::regclass
+                )
+                  AND contype = 'c'
+                """
+            )
+        }
+        cycle_check = reference_constraints["contract_versions_billing_cycle_consistency"]
+        assert "billing_anchor_competence IS NULL" in cycle_check
+        assert "billing_anchor_position IS NOT NULL" in cycle_check
+        assert "billing_cycle_total IS NOT NULL" in cycle_check
+        assert "billing_anchor_position <= billing_cycle_total" in cycle_check
+        assert any(
+            "installment_total" in definition and ">= 1" in definition
+            for definition in reference_constraints.values()
+        )
+        assert any(
+            "installment_number" in definition and ">= 1" in definition
+            for definition in reference_constraints.values()
+        )
+        installment_index = connection.execute(
+            """
+            SELECT indexdef
+            FROM pg_indexes
+            WHERE schemaname = 'public'
+              AND indexname = 'client_service_occurrences_installment_unique'
+            """
+        ).fetchone()
+        assert installment_index is not None
+        assert "UNIQUE" in installment_index[0]
+        assert "client_service_id, installment_number" in installment_index[0]
 
         seed_counts = connection.execute(
             """
@@ -692,7 +775,7 @@ def test_postgres_foundation_invariants() -> None:
 def test_postgres_migration_007_client_services_and_billing_origins() -> None:
     with psycopg.connect(postgres_test_url(), autocommit=True) as connection:
         applied = apply_foundation(connection)
-        assert applied[-1] == "007_client_services_identity.sql"
+        assert "007_client_services_identity.sql" in applied
 
         nullable = connection.execute(
             """
