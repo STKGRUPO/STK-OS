@@ -43,6 +43,7 @@ class FiscalIssuanceResponse(BaseModel):
     dps_id: str
     nfse_number: str | None
     access_key: str | None
+    authorized_net_amount: Decimal | None = None
     provider_reference: str | None
     error_category: str | None
     error_code: str | None

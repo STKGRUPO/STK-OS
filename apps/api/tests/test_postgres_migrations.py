@@ -4,6 +4,7 @@ import hashlib
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg
@@ -41,6 +42,7 @@ EXPECTED_MIGRATIONS = [
     "025_fiscal_establishment_contacts.sql",
     "026_legal_entity_contacts.sql",
     "027_billing_reference_anchors.sql",
+    "028_fiscal_authorized_net_amount.sql",
 ]
 
 
@@ -1199,3 +1201,62 @@ def test_postgres_fiscal_document_allows_only_initial_content_hydration() -> Non
                 "UPDATE fiscal_documents SET content_bytes = %s WHERE id = %s",
                 (b"bad", receipt_document_id),
             )
+
+
+@pytest.mark.postgres
+def test_postgres_authorized_net_amount_backfill_is_safe_and_idempotent() -> None:
+    migration = (MIGRATIONS / "028_fiscal_authorized_net_amount.sql").read_text(
+        encoding="utf-8"
+    )
+    with psycopg.connect(postgres_test_url(), autocommit=True) as connection:
+        connection.execute("DROP SCHEMA public CASCADE")
+        connection.execute("CREATE SCHEMA public")
+        connection.execute("CREATE TABLE fiscal_issuances (id uuid PRIMARY KEY)")
+        connection.execute(
+            """
+            CREATE TABLE fiscal_documents (
+                issuance_id uuid NOT NULL,
+                document_type text NOT NULL,
+                content_bytes bytea
+            )
+            """
+        )
+        valid_id, preserved_id, invalid_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        connection.execute(
+            "INSERT INTO fiscal_issuances (id) VALUES (%s), (%s), (%s)",
+            (valid_id, preserved_id, invalid_id),
+        )
+        connection.execute(migration)
+        connection.execute(
+            "UPDATE fiscal_issuances SET authorized_net_amount = 999.99 WHERE id = %s",
+            (preserved_id,),
+        )
+        for issuance_id, payload in (
+            (valid_id, b"<NFSe><infNFSe><valores><vLiq>750.80</vLiq></valores></infNFSe></NFSe>"),
+            (
+                preserved_id,
+                b"<NFSe><infNFSe><valores><vLiq>1.00</vLiq></valores></infNFSe></NFSe>",
+            ),
+            (
+                invalid_id,
+                b"<NFSe><infNFSe><valores><vLiq>invalid</vLiq></valores></infNFSe></NFSe>",
+            ),
+        ):
+            connection.execute(
+                """
+                INSERT INTO fiscal_documents (issuance_id, document_type, content_bytes)
+                VALUES (%s, 'nfse_xml', %s)
+                """,
+                (issuance_id, payload),
+            )
+
+        connection.execute(migration)
+        connection.execute(migration)
+        values = dict(
+            connection.execute(
+                "SELECT id, authorized_net_amount FROM fiscal_issuances"
+            ).fetchall()
+        )
+        assert values[valid_id] == Decimal("750.80")
+        assert values[preserved_id] == Decimal("999.99")
+        assert values[invalid_id] is None

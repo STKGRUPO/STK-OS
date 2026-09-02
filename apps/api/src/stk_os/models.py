@@ -900,6 +900,7 @@ class FiscalIssuance(Base):
     signed_dps_sha256: Mapped[str | None] = mapped_column(String(64))
     nfse_number: Mapped[str | None] = mapped_column(String(100))
     access_key: Mapped[str | None] = mapped_column(String(100), unique=True)
+    authorized_net_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     provider_reference: Mapped[str | None] = mapped_column(String(255))
     error_category: Mapped[str | None] = mapped_column(String(50))
     error_code: Mapped[str | None] = mapped_column(String(100))

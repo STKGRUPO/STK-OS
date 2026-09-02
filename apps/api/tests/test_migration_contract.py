@@ -197,3 +197,21 @@ def test_billing_reference_anchor_migration_is_additive_and_consistent() -> None
     assert "CLIENT_SERVICE_OCCURRENCES_INSTALLMENT_UNIQUE" in normalized
     assert "DROP " not in normalized
     assert "DELETE " not in normalized
+
+
+def test_fiscal_authorized_net_amount_migration_is_additive_and_idempotent() -> None:
+    delta = (
+        ROOT / "database/migrations/028_fiscal_authorized_net_amount.sql"
+    ).read_text(encoding="utf-8")
+    normalized = delta.upper()
+
+    assert "ALTER TABLE PUBLIC.FISCAL_ISSUANCES" in normalized
+    assert "ADD COLUMN IF NOT EXISTS AUTHORIZED_NET_AMOUNT NUMERIC(18, 2)" in normalized
+    assert "FI.AUTHORIZED_NET_AMOUNT IS NULL" in normalized
+    assert "FD.DOCUMENT_TYPE = 'NFSE_XML'" in normalized
+    assert "FD.CONTENT_BYTES IS NOT NULL" in normalized
+    assert "XPATH(" in normalized
+    assert "LOCAL-NAME()=\"VLIQ\"" in normalized
+    assert "VLIQ" in normalized
+    assert "DROP " not in normalized
+    assert "DELETE " not in normalized

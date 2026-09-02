@@ -425,6 +425,9 @@ def test_real_nfse_13_metadata_and_friendly_filenames() -> None:
     assert metadata.dps_number == "13"
     assert metadata.access_key == "42091022239813375000106000000000001326090584825643"
     assert metadata.issuer_tax_id == "39813375000106"
+    assert metadata.authorized_net_amount == Decimal("1621.00")
+    root = etree.fromstring(AUTHORIZED_NFSE_XML)
+    assert metadata.authorized_net_amount == Decimal(root.findtext(f".//{{{NFSE}}}vServ"))
     assert friendly_nfse_filename(
         document_type="nfse_xml",
         nfse_number=metadata.nfse_number,
@@ -437,6 +440,16 @@ def test_real_nfse_13_metadata_and_friendly_filenames() -> None:
         trade_name=None,
         legal_name="Clínica São João Ltda.",
     ) == "NFSE_13_CLINICA_SAO_JOAO_LTDA.pdf"
+
+
+def test_authorized_nfse_without_valid_net_amount_keeps_it_unknown() -> None:
+    missing = AUTHORIZED_NFSE_XML.replace(b"<vLiq>1621.00</vLiq>", b"")
+    invalid = AUTHORIZED_NFSE_XML.replace(
+        b"<vLiq>1621.00</vLiq>", b"<vLiq>invalid</vLiq>"
+    )
+
+    assert extract_authorized_nfse_metadata(missing).authorized_net_amount is None
+    assert extract_authorized_nfse_metadata(invalid).authorized_net_amount is None
 
 
 def test_sefin_authorization_uses_number_and_key_from_authorized_xml() -> None:

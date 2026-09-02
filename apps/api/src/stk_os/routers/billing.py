@@ -377,7 +377,12 @@ def billing_reference_fields(
     return origin_type, origin_label, reference_type, position, total, label
 
 
-def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
+def item_summary(
+    session: Session,
+    item: BillingItem,
+    *,
+    authorized_net_amount: Decimal | None = None,
+) -> BillingItemSummary:
     contract = session.get(Contract, item.contract_id) if item.contract_id else None
     version = (
         session.get(ContractVersion, item.contract_version_id) if item.contract_version_id else None
@@ -422,6 +427,7 @@ def item_summary(session: Session, item: BillingItem) -> BillingItemSummary:
         issuer_name=issuer.name if issuer else None,
         currency=item.currency,
         gross_amount=Decimal(item.gross_amount) if item.gross_amount is not None else None,
+        authorized_net_amount=authorized_net_amount,
         status=item.status,
         blocking_code=item.blocking_code,
         blocking_reason=item.blocking_reason,
@@ -991,10 +997,14 @@ def list_items(
     run_id: uuid.UUID | None = None,
 ) -> list[BillingItemSummary]:
     scope = unit_scope(session, actor, "billing:read")
-    statement = select(BillingItem).where(
-    BillingItem.organization_id == actor.organization_id,
-    visible_billing_items(),
-)
+    statement = (
+        select(BillingItem, FiscalIssuance.authorized_net_amount)
+        .outerjoin(FiscalIssuance, FiscalIssuance.billing_item_id == BillingItem.id)
+        .where(
+            BillingItem.organization_id == actor.organization_id,
+            visible_billing_items(),
+        )
+    )
     if scope is not None:
         statement = statement.where(BillingItem.business_unit_id.in_(scope))
     if competence_month:
@@ -1012,10 +1022,13 @@ def list_items(
         statement = statement.join(
             BillingRunContract, BillingRunContract.billing_item_id == BillingItem.id
         ).where(BillingRunContract.billing_run_id == run_id)
-    items = session.scalars(
+    items = session.execute(
         statement.order_by(BillingItem.competence_month.desc(), BillingItem.created_at)
     ).all()
-    return [item_summary(session, item) for item in items]
+    return [
+        item_summary(session, item, authorized_net_amount=authorized_net_amount)
+        for item, authorized_net_amount in items
+    ]
 
 
 @router.get("/items/{item_id}", response_model=BillingItemDetail)
@@ -1024,11 +1037,12 @@ def get_item(
     session: SessionDep,
     actor: Annotated[ActorContext, Depends(require_permission("billing:read"))],
 ) -> BillingItemDetail:
-    item = session.scalar(
-        select(BillingItem).where(
-            BillingItem.id == item_id, BillingItem.organization_id == actor.organization_id
-        )
-    )
+    row = session.execute(
+        select(BillingItem, FiscalIssuance.authorized_net_amount)
+        .outerjoin(FiscalIssuance, FiscalIssuance.billing_item_id == BillingItem.id)
+        .where(BillingItem.id == item_id, BillingItem.organization_id == actor.organization_id)
+    ).one_or_none()
+    item, authorized_net_amount = row if row is not None else (None, None)
     if item is None:
         raise HTTPException(status_code=404, detail="Obrigação de faturamento não encontrada")
     ensure_unit_access(session, actor, "billing:read", item.business_unit_id)
@@ -1062,7 +1076,11 @@ def get_item(
         )
     history.sort(key=lambda value: value.occurred_at)
     return BillingItemDetail(
-        **item_summary(session, item).model_dump(), snapshot=item.snapshot, history=history
+        **item_summary(
+            session, item, authorized_net_amount=authorized_net_amount
+        ).model_dump(),
+        snapshot=item.snapshot,
+        history=history,
     )
 
 

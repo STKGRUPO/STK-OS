@@ -19,6 +19,7 @@ from stk_os.database import SessionDep
 from stk_os.dependencies import require_permission
 from stk_os.fiscal.configuration import FiscalConfigurationError, validate_fiscal_config
 from stk_os.fiscal.documents import (
+    AuthorizedNfseMetadata,
     extract_authorized_nfse_metadata,
     friendly_nfse_filename,
     render_danfse_from_authorized_xml,
@@ -270,6 +271,7 @@ def response_for(session: Session, issuance: FiscalIssuance) -> FiscalIssuanceRe
         dps_id=issuance.dps_id,
         nfse_number=issuance.nfse_number,
         access_key=issuance.access_key,
+        authorized_net_amount=issuance.authorized_net_amount,
         provider_reference=issuance.provider_reference,
         error_category=issuance.error_category,
         error_code=issuance.error_code,
@@ -436,7 +438,7 @@ def validate_recovered_nfse_identity(
     issuance: FiscalIssuance,
     config: FiscalEstablishmentConfig,
     xml: bytes,
-) -> None:
+) -> AuthorizedNfseMetadata:
     metadata = extract_authorized_nfse_metadata(xml)
     establishment = session.get(FiscalEstablishment, config.establishment_id)
     entity = session.get(LegalEntity, establishment.legal_entity_id) if establishment else None
@@ -461,6 +463,7 @@ def validate_recovered_nfse_identity(
             "AUTHORIZED_DOCUMENT_IDENTITY_DIVERGENCE",
             "XML recuperado não corresponde à emissão fiscal autorizada",
         )
+    return metadata
 
 
 def record_document_recovery_failure(
@@ -522,6 +525,8 @@ def apply_provider_result(
                 metadata = extract_authorized_nfse_metadata(xml_document.content)
                 issuance.nfse_number = metadata.nfse_number
                 issuance.access_key = metadata.access_key
+                if issuance.authorized_net_amount is None:
+                    issuance.authorized_net_amount = metadata.authorized_net_amount
                 generated_documents["nfse_xml"] = xml_document
                 pdf = render_danfse_from_authorized_xml(xml_document.content)
                 generated_documents["danfse_pdf"] = ProviderDocument(
@@ -1168,6 +1173,17 @@ def reconcile_issuance_documents(
     }
     actions = {"nfse_xml": "unchanged", "danfse_pdf": "unchanged"}
     try:
+        persisted_xml = documents.get("nfse_xml")
+        if (
+            issuance.authorized_net_amount is None
+            and fiscal_document_is_intact(persisted_xml)
+            and persisted_xml is not None
+            and persisted_xml.content_bytes is not None
+        ):
+            metadata = validate_recovered_nfse_identity(
+                session, issuance, config, persisted_xml.content_bytes
+            )
+            issuance.authorized_net_amount = metadata.authorized_net_amount
         if not all(
             fiscal_document_is_intact(documents.get(document_type))
             for document_type in ("nfse_xml", "danfse_pdf")
@@ -1199,7 +1215,11 @@ def reconcile_issuance_documents(
                     "SEFIN não retornou o XML autorizado para recuperação documental",
                     status_code=503 if result.status == "external_unavailable" else 409,
                 )
-            validate_recovered_nfse_identity(session, issuance, config, xml_document.content)
+            metadata = validate_recovered_nfse_identity(
+                session, issuance, config, xml_document.content
+            )
+            if issuance.authorized_net_amount is None:
+                issuance.authorized_net_amount = metadata.authorized_net_amount
             pdf = render_danfse_from_authorized_xml(xml_document.content)
             actions["nfse_xml"] = persist_recovered_document(
                 session,

@@ -4,6 +4,7 @@ import re
 import tempfile
 import unicodedata
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 from lxml import etree
@@ -33,6 +34,7 @@ class AuthorizedNfseMetadata:
     access_key: str
     dps_number: str
     issuer_tax_id: str
+    authorized_net_amount: Decimal | None
 
 
 def parse_authorized_nfse(xml: bytes) -> tuple[etree._Element, AuthorizedNfseMetadata]:
@@ -53,6 +55,12 @@ def parse_authorized_nfse(xml: bytes) -> tuple[etree._Element, AuthorizedNfseMet
     issuer_tax_id = (
         inf.findtext("n:DPS/n:infDPS/n:prest/n:CNPJ", namespaces=NS) or ""
     ).strip()
+    net_amount_text = (inf.findtext("n:valores/n:vLiq", namespaces=NS) or "").strip()
+    authorized_net_amount = (
+        Decimal(net_amount_text)
+        if re.fullmatch(r"\d+(?:\.\d{1,2})?", net_amount_text)
+        else None
+    )
     if not nfse_number:
         raise AuthorizedNfseError("XML autorizado sem nNFSe")
     if len(access_key) != 50 or not access_key.isdigit():
@@ -61,7 +69,13 @@ def parse_authorized_nfse(xml: bytes) -> tuple[etree._Element, AuthorizedNfseMet
         raise AuthorizedNfseError("XML autorizado sem número da DPS")
     if len(issuer_tax_id) != 14 or not issuer_tax_id.isdigit():
         raise AuthorizedNfseError("XML autorizado sem CNPJ do emissor válido")
-    return root, AuthorizedNfseMetadata(nfse_number, access_key, dps_number, issuer_tax_id)
+    return root, AuthorizedNfseMetadata(
+        nfse_number,
+        access_key,
+        dps_number,
+        issuer_tax_id,
+        authorized_net_amount,
+    )
 
 
 def extract_authorized_nfse_metadata(xml: bytes) -> AuthorizedNfseMetadata:

@@ -80,6 +80,7 @@ class BillingItemSummary(BaseModel):
     issuer_name: str | None
     currency: str | None
     gross_amount: Decimal | None
+    authorized_net_amount: Decimal | None = None
     status: str
     blocking_code: str | None
     blocking_reason: str | None

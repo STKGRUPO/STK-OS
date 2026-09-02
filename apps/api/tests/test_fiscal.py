@@ -4,6 +4,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,7 +19,7 @@ from conftest import (
 )
 from fastapi.testclient import TestClient
 from lxml import etree
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.orm import Session, sessionmaker
 from test_billing import create_billable_contract, generate, month_start
 
@@ -61,6 +62,7 @@ class FakeGateway:
         self.reconcile_calls = 0
         self.document_fetch_calls = 0
         self.document_xml_override: bytes | None = None
+        self.issue_xml_override: bytes | None = None
         self.issued_xmls: list[bytes] = []
         self.lock = threading.Lock()
         self.issue_entered: threading.Event | None = None
@@ -73,7 +75,7 @@ class FakeGateway:
             access_key = str(
                 int("42091022239813375000106000000000001326090584825643") + sequence - 1
             )
-            authorized_xml = AUTHORIZED_NFSE_XML.replace(
+            authorized_xml = (self.issue_xml_override or AUTHORIZED_NFSE_XML).replace(
                 b"<nNFSe>13</nNFSe>", f"<nNFSe>{nfse_number}</nNFSe>".encode()
             ).replace(
                 b"42091022239813375000106000000000001326090584825643",
@@ -264,6 +266,7 @@ def test_contract_issuance_is_idempotent_and_persists_documents(
     assert first.json()["issuer_establishment_id"] == str(ESTABLISHMENT_ID)
     assert first.json()["nfse_number"] == "13"
     assert first.json()["access_key"] == "42091022239813375000106000000000001326090584825643"
+    assert first.json()["authorized_net_amount"] == "1621.00"
     assert {document["document_type"] for document in first.json()["documents"]} == {
         "nfse_xml",
         "danfse_pdf",
@@ -294,10 +297,83 @@ def test_contract_issuance_is_idempotent_and_persists_documents(
             == "completed"
         )
         assert len(session.scalars(select(FiscalIssuance)).all()) == 1
+        assert session.scalar(select(FiscalIssuance)).authorized_net_amount == Decimal("1621.00")
         assert len(session.scalars(select(FiscalAttempt)).all()) == 1
         persisted_documents = list(session.scalars(select(FiscalDocument)).all())
         assert len(persisted_documents) == 2
         assert all(document.content_bytes for document in persisted_documents)
+
+
+def test_authorized_net_amount_is_exposed_by_fiscal_and_billing_apis(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    fake_gateway.issue_xml_override = AUTHORIZED_NFSE_XML.replace(
+        b"<vLiq>1621.00</vLiq>", b"<vLiq>750.80</vLiq>"
+    )
+    item = create_contract_item(client, admin_headers, "AUTHORIZED-NET-AMOUNT")
+    assert item["authorized_net_amount"] is None
+
+    issued = issue(client, admin_headers, item["id"], "issue-authorized-net-amount")
+    assert issued.status_code == 202, issued.text
+    assert issued.json()["authorized_net_amount"] == "750.80"
+
+    listed = client.get("/api/v1/billing/items", headers=admin_headers)
+    assert listed.status_code == 200
+    listed_item = next(row for row in listed.json() if row["id"] == item["id"])
+    assert listed_item["authorized_net_amount"] == "750.80"
+
+    detail = client.get(f"/api/v1/billing/items/{item['id']}", headers=admin_headers)
+    assert detail.status_code == 200
+    assert detail.json()["authorized_net_amount"] == "750.80"
+
+    with session_factory() as session:
+        issuance = session.scalar(
+            select(FiscalIssuance).where(FiscalIssuance.billing_item_id == uuid.UUID(item["id"]))
+        )
+        assert issuance is not None
+        issuance.authorized_net_amount = None
+        for document in session.scalars(
+            select(FiscalDocument).where(FiscalDocument.issuance_id == issuance.id)
+        ):
+            session.delete(document)
+        session.commit()
+
+    without_document = client.get(
+        f"/api/v1/billing/items/{item['id']}", headers=admin_headers
+    )
+    assert without_document.status_code == 200
+    assert without_document.json()["authorized_net_amount"] is None
+
+
+def test_billing_list_fetches_authorized_net_amount_without_n_plus_one(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    fake_gateway: FakeGateway,
+    session_factory: sessionmaker[Session],
+) -> None:
+    items = create_contract_items(client, admin_headers, ("NET-QUERY-A", "NET-QUERY-B"))
+    for index, item in enumerate(items, start=1):
+        response = issue(client, admin_headers, item["id"], f"issue-net-query-{index}")
+        assert response.status_code == 202, response.text
+
+    engine = session_factory.kw["bind"]
+    fiscal_queries: list[str] = []
+
+    def capture_fiscal_query(_conn, _cursor, statement, _parameters, _context, _many) -> None:
+        if "fiscal_issuances" in statement.lower():
+            fiscal_queries.append(statement)
+
+    event.listen(engine, "before_cursor_execute", capture_fiscal_query)
+    try:
+        response = client.get("/api/v1/billing/items", headers=admin_headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_fiscal_query)
+
+    assert response.status_code == 200
+    assert len(fiscal_queries) == 1
 
 
 def test_completed_nfse_13_document_recovery_is_idempotent_and_scoped(
@@ -332,6 +408,9 @@ def test_completed_nfse_13_document_recovery_is_idempotent_and_scoped(
         )
         assert xml_document is not None and pdf_document is not None
         xml_document.content_bytes = None
+        issuance = session.get(FiscalIssuance, issuance_id)
+        assert issuance is not None
+        issuance.authorized_net_amount = None
         session.delete(pdf_document)
         session.commit()
 
@@ -369,6 +448,7 @@ def test_completed_nfse_13_document_recovery_is_idempotent_and_scoped(
             "13",
         )
         assert issuance.access_key == original["access_key"]
+        assert issuance.authorized_net_amount == Decimal("1621.00")
 
     replay = client.post(
         endpoint,
