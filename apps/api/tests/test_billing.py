@@ -244,7 +244,7 @@ def test_contract_cycle_reference_uses_civil_months_and_stops_after_total(
         ).json()
         assert len(items) == 1
         assert items[0]["origin_label"] == "Contrato"
-        assert items[0]["reference_type"] == "contract_cycle"
+        assert items[0]["reference_type"] == "month"
         assert items[0]["reference_position"] == expected_position
         assert items[0]["reference_total"] == 12
         assert items[0]["reference_label"] == f"Mês {expected_position}/12"
@@ -252,7 +252,7 @@ def test_contract_cycle_reference_uses_civil_months_and_stops_after_total(
             f"/api/v1/billing/items/{items[0]['id']}", headers=admin_headers
         ).json()
         assert detail["snapshot"]["billing_reference"] == {
-            "type": "contract_cycle",
+            "type": "month",
             "position": expected_position,
             "total": 12,
         }

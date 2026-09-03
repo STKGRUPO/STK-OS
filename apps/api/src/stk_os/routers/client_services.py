@@ -621,6 +621,18 @@ def create_billing_item(
         business_unit_id=service.business_unit_id,
         created_by_run_id=None,
         source_type=source_type,
+        origin_type=(
+            "contract"
+            if contract
+            else (
+                "recurring_service"
+                if service.service_type == "recurring"
+                else "one_time_service"
+            )
+        ),
+        reference_type=(billing_reference or {}).get("type"),
+        reference_position=(billing_reference or {}).get("position"),
+        reference_total=(billing_reference or {}).get("total"),
         client_service_id=service.id,
         service_occurrence_id=occurrence.id,
         contract_id=contract.id if contract else None,

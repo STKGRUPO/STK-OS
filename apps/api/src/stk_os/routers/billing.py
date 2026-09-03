@@ -188,7 +188,7 @@ def contract_cycle_reference(
             "O ciclo contratual configurado já foi integralmente faturado.",
         )
     return {
-        "type": "contract_cycle",
+        "type": "month",
         "position": position,
         "total": version.billing_cycle_total,
     }, None
@@ -357,19 +357,20 @@ def service_labels(
 
 def billing_reference_fields(
     item: BillingItem,
-) -> tuple[str, str, str | None, int | None, int | None, str | None]:
-    if item.contract_id is not None:
-        origin_type, origin_label = "contract", "Contrato"
-    else:
-        origin_type, origin_label = "service", "Serviço avulso"
-    reference = item.snapshot.get("billing_reference") or {}
-    reference_type = reference.get("type")
-    position = reference.get("position")
-    total = reference.get("total")
-    if reference_type == "contract_cycle" and position is not None and total is not None:
+) -> tuple[str | None, str | None, str | None, int | None, int | None, str | None]:
+    origin_type = item.origin_type
+    origin_label = {
+        "contract": "Contrato",
+        "recurring_service": "Serviço recorrente",
+        "one_time_service": "Serviço avulso",
+    }.get(origin_type)
+    reference_type = item.reference_type
+    position = item.reference_position
+    total = item.reference_total
+    if reference_type == "month" and position is not None and total is not None:
         label = f"Mês {position}/{total}"
     elif reference_type == "installment" and position is not None and total is not None:
-        label = f"Parcela {position}/{total}"
+        label = f"Parcela {position:02d} de {total}"
     elif reference_type == "single":
         label = "Única"
     else:
@@ -382,6 +383,8 @@ def item_summary(
     item: BillingItem,
     *,
     authorized_net_amount: Decimal | None = None,
+    nfse_number: str | None = None,
+    access_key: str | None = None,
 ) -> BillingItemSummary:
     contract = session.get(Contract, item.contract_id) if item.contract_id else None
     version = (
@@ -428,6 +431,8 @@ def item_summary(
         currency=item.currency,
         gross_amount=Decimal(item.gross_amount) if item.gross_amount is not None else None,
         authorized_net_amount=authorized_net_amount,
+        nfse_number=nfse_number,
+        access_key=access_key,
         status=item.status,
         blocking_code=item.blocking_code,
         blocking_reason=item.blocking_reason,
@@ -644,6 +649,10 @@ def create_item_for_contract(
         business_unit_id=contract.business_unit_id,
         created_by_run_id=run.id,
         source_type="contract_recurring",
+        origin_type="contract",
+        reference_type=billing_reference.get("type") if billing_reference else None,
+        reference_position=billing_reference.get("position") if billing_reference else None,
+        reference_total=billing_reference.get("total") if billing_reference else None,
         contract_id=contract.id,
         contract_version_id=version.id if version else None,
         competence_month=competence,
@@ -998,7 +1007,12 @@ def list_items(
 ) -> list[BillingItemSummary]:
     scope = unit_scope(session, actor, "billing:read")
     statement = (
-        select(BillingItem, FiscalIssuance.authorized_net_amount)
+        select(
+            BillingItem,
+            FiscalIssuance.authorized_net_amount,
+            FiscalIssuance.nfse_number,
+            FiscalIssuance.access_key,
+        )
         .outerjoin(FiscalIssuance, FiscalIssuance.billing_item_id == BillingItem.id)
         .where(
             BillingItem.organization_id == actor.organization_id,
@@ -1026,8 +1040,14 @@ def list_items(
         statement.order_by(BillingItem.competence_month.desc(), BillingItem.created_at)
     ).all()
     return [
-        item_summary(session, item, authorized_net_amount=authorized_net_amount)
-        for item, authorized_net_amount in items
+        item_summary(
+            session,
+            item,
+            authorized_net_amount=authorized_net_amount,
+            nfse_number=nfse_number,
+            access_key=access_key,
+        )
+        for item, authorized_net_amount, nfse_number, access_key in items
     ]
 
 
@@ -1038,11 +1058,18 @@ def get_item(
     actor: Annotated[ActorContext, Depends(require_permission("billing:read"))],
 ) -> BillingItemDetail:
     row = session.execute(
-        select(BillingItem, FiscalIssuance.authorized_net_amount)
+        select(
+            BillingItem,
+            FiscalIssuance.authorized_net_amount,
+            FiscalIssuance.nfse_number,
+            FiscalIssuance.access_key,
+        )
         .outerjoin(FiscalIssuance, FiscalIssuance.billing_item_id == BillingItem.id)
         .where(BillingItem.id == item_id, BillingItem.organization_id == actor.organization_id)
     ).one_or_none()
-    item, authorized_net_amount = row if row is not None else (None, None)
+    item, authorized_net_amount, nfse_number, access_key = (
+        row if row is not None else (None, None, None, None)
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="Obrigação de faturamento não encontrada")
     ensure_unit_access(session, actor, "billing:read", item.business_unit_id)
@@ -1077,7 +1104,11 @@ def get_item(
     history.sort(key=lambda value: value.occurred_at)
     return BillingItemDetail(
         **item_summary(
-            session, item, authorized_net_amount=authorized_net_amount
+            session,
+            item,
+            authorized_net_amount=authorized_net_amount,
+            nfse_number=nfse_number,
+            access_key=access_key,
         ).model_dump(),
         snapshot=item.snapshot,
         history=history,

@@ -15,6 +15,7 @@ from stk_os.routers import (
     crm,
     fiscal,
     health,
+    integrations,
     organization,
 )
 
@@ -35,6 +36,7 @@ fastapi_app.include_router(contracts.router, prefix="/api/v1")
 fastapi_app.include_router(billing.router, prefix="/api/v1")
 fastapi_app.include_router(client_services.router, prefix="/api/v1")
 fastapi_app.include_router(fiscal.router, prefix="/api/v1")
+fastapi_app.include_router(integrations.router, prefix="/api/v1")
 
 # Keep CORS outside FastAPI's error middleware so even an unhandled 500 carries
 # the browser-visible CORS headers instead of being reported as a network error.

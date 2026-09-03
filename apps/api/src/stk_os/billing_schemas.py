@@ -65,8 +65,8 @@ class BillingItemSummary(BaseModel):
     contract_version_number: int | None
     service_name: str | None = None
     service_description: str | None = None
-    origin_type: str
-    origin_label: str
+    origin_type: str | None
+    origin_label: str | None
     reference_type: str | None
     reference_position: int | None
     reference_total: int | None
@@ -81,6 +81,8 @@ class BillingItemSummary(BaseModel):
     currency: str | None
     gross_amount: Decimal | None
     authorized_net_amount: Decimal | None = None
+    nfse_number: str | None = None
+    access_key: str | None = None
     status: str
     blocking_code: str | None
     blocking_reason: str | None

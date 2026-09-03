@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -42,6 +42,7 @@ from stk_os.fiscal_schemas import (
     OneTimeBillingCreate,
     OneTimeBillingResponse,
 )
+from stk_os.integrations.onedrive import enqueue_archive, process_pending_in_background
 from stk_os.models import (
     BillingItem,
     BillingItemRemoval,
@@ -56,6 +57,7 @@ from stk_os.models import (
     FiscalEstablishment,
     FiscalEstablishmentConfig,
     FiscalIssuance,
+    IntegrationConnection,
     LegalEntity,
     OperationalException,
     ProductService,
@@ -76,6 +78,20 @@ DPS_COLLISION_CONSTRAINTS = {
 }
 IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=255)]
 RuntimeDep = Annotated[FiscalRuntime, Depends(get_fiscal_runtime)]
+
+
+def schedule_onedrive_archive(
+    session: Session, background_tasks: BackgroundTasks, organization_id: uuid.UUID
+) -> None:
+    connected = session.scalar(
+        select(IntegrationConnection.id).where(
+            IntegrationConnection.organization_id == organization_id,
+            IntegrationConnection.provider == "onedrive",
+            IntegrationConnection.status == "active",
+        )
+    )
+    if connected:
+        background_tasks.add_task(process_pending_in_background, organization_id)
 
 
 class FiscalDocumentRecoveryError(RuntimeError):
@@ -583,6 +599,8 @@ def apply_provider_result(
         issuance.status = "document_error" if document_failed else "completed"
         if item:
             item.status = "completed"
+        session.flush()
+        enqueue_archive(session, issuance)
     else:
         if result.error_code == "CERTIFICATE_INVALID":
             result_status = "configuration_error"
@@ -891,6 +909,7 @@ def issue_billing_item(
     request: Request,
     session: SessionDep,
     runtime: RuntimeDep,
+    background_tasks: BackgroundTasks,
     idempotency_key: IdempotencyHeader,
     actor: Annotated[ActorContext, Depends(require_permission("fiscal:issue"))],
 ) -> FiscalIssuanceResponse:
@@ -904,6 +923,7 @@ def issue_billing_item(
         correlation_id=request.state.correlation_id,
     )
     if cached:
+        schedule_onedrive_archive(session, background_tasks, actor.organization_id)
         return FiscalIssuanceResponse.model_validate(cached)
     response = issue_item_core(
         item=item,
@@ -916,6 +936,7 @@ def issue_billing_item(
         record = session.merge(record)
         complete_command(record, response.model_dump(mode="json"), response_status=202)
         session.commit()
+    schedule_onedrive_archive(session, background_tasks, actor.organization_id)
     return response
 
 
@@ -925,6 +946,7 @@ def issue_billing_items_batch(
     request: Request,
     session: SessionDep,
     runtime: RuntimeDep,
+    background_tasks: BackgroundTasks,
     idempotency_key: IdempotencyHeader,
     actor: Annotated[ActorContext, Depends(require_permission("fiscal:issue"))],
 ) -> FiscalBatchIssueResponse:
@@ -969,6 +991,7 @@ def issue_billing_items_batch(
         correlation_id=request.state.correlation_id,
     )
     if cached:
+        schedule_onedrive_archive(session, background_tasks, actor.organization_id)
         return FiscalBatchIssueResponse.model_validate(cached)
 
     results: list[FiscalBatchItemResult] = []
@@ -1035,6 +1058,7 @@ def issue_billing_items_batch(
         record = session.merge(record)
         complete_command(record, response.model_dump(mode="json"), response_status=200)
         session.commit()
+    schedule_onedrive_archive(session, background_tasks, actor.organization_id)
     return response
 
 
@@ -1270,6 +1294,7 @@ def reconcile_issuance_documents(
             status_code=safe_error.status_code, detail=safe_error.detail
         ) from error
 
+    enqueue_archive(session, issuance)
     record_change(
         session,
         actor=actor,
@@ -1508,6 +1533,12 @@ def create_one_time_billing(
                 "reason": f"Cadastro do cliente incompleto para fins fiscais: {labels}.",
             }
         )
+    origin_type = command.origin_type or "one_time_service"
+    reference_type = command.reference_type or (
+        "installment" if command.installment_total is not None else "single"
+    )
+    reference_position = command.reference_position or command.installment_number
+    reference_total = command.reference_total or command.installment_total
     snapshot = {
         "schema_version": "billing-item-snapshot.v3",
         "source": {
@@ -1526,15 +1557,11 @@ def create_one_time_billing(
         "issuer": {"id": str(command.issuer_establishment_id)},
         "currency": command.currency,
         "gross_amount": str(command.amount),
-        "billing_reference": (
-            {
-                "type": "installment",
-                "position": command.installment_number,
-                "total": command.installment_total,
-            }
-            if command.installment_total is not None
-            else {"type": "single", "position": None, "total": None}
-        ),
+        "billing_reference": {
+            "type": reference_type,
+            "position": reference_position,
+            "total": reference_total,
+        },
         "blockers": blockers,
     }
     first = blockers[0] if blockers else None
@@ -1543,6 +1570,10 @@ def create_one_time_billing(
         business_unit_id=command.business_unit_id,
         created_by_run_id=None,
         source_type="service_one_time",
+        origin_type=origin_type,
+        reference_type=reference_type,
+        reference_position=reference_position,
+        reference_total=reference_total,
         client_service_id=service.id,
         service_occurrence_id=occurrence.id,
         contract_id=None,

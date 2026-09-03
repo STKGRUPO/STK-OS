@@ -76,6 +76,10 @@ class OneTimeBillingCreate(BaseModel):
     issuer_establishment_id: uuid.UUID
     installment_total: int | None = Field(default=None, ge=2, le=120)
     installment_number: int | None = Field(default=None, ge=1)
+    origin_type: Literal["contract", "recurring_service", "one_time_service"] | None = None
+    reference_type: Literal["month", "installment", "single"] | None = None
+    reference_position: int | None = Field(default=None, ge=1)
+    reference_total: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_installment(self) -> OneTimeBillingCreate:
@@ -86,6 +90,28 @@ class OneTimeBillingCreate(BaseModel):
             and self.installment_number > self.installment_total
         ):
             raise ValueError("Número da parcela não pode superar o total")
+        origin = self.origin_type or "one_time_service"
+        reference = self.reference_type
+        position = self.reference_position
+        total = self.reference_total
+        if reference is None:
+            reference = "installment" if self.installment_total is not None else "single"
+            position = position or self.installment_number
+            total = total or self.installment_total
+        allowed = {
+            "contract": {"month"},
+            "recurring_service": {"installment", "single"},
+            "one_time_service": {"installment", "single"},
+        }
+        if reference not in allowed[origin]:
+            raise ValueError("Referência incompatível com a origem comercial")
+        needs_position = reference in {"month", "installment"}
+        if needs_position and (position is None or total is None):
+            raise ValueError("Referência exige posição e total")
+        if not needs_position and (position is not None or total is not None):
+            raise ValueError("Referência única não aceita posição ou total")
+        if position is not None and total is not None and position > total:
+            raise ValueError("Posição da referência não pode superar o total")
         return self
 
 

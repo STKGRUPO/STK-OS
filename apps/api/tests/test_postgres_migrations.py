@@ -43,6 +43,8 @@ EXPECTED_MIGRATIONS = [
     "026_legal_entity_contacts.sql",
     "027_billing_reference_anchors.sql",
     "028_fiscal_authorized_net_amount.sql",
+    "029_billing_commercial_semantics.sql",
+    "030_onedrive_archiving.sql",
 ]
 
 

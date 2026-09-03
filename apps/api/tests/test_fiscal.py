@@ -315,6 +315,8 @@ def test_authorized_net_amount_is_exposed_by_fiscal_and_billing_apis(
     )
     item = create_contract_item(client, admin_headers, "AUTHORIZED-NET-AMOUNT")
     assert item["authorized_net_amount"] is None
+    assert item["nfse_number"] is None
+    assert item["access_key"] is None
 
     issued = issue(client, admin_headers, item["id"], "issue-authorized-net-amount")
     assert issued.status_code == 202, issued.text
@@ -324,6 +326,8 @@ def test_authorized_net_amount_is_exposed_by_fiscal_and_billing_apis(
     assert listed.status_code == 200
     listed_item = next(row for row in listed.json() if row["id"] == item["id"])
     assert listed_item["authorized_net_amount"] == "750.80"
+    assert listed_item["nfse_number"] == "13"
+    assert listed_item["access_key"] == "42091022239813375000106000000000001326090584825643"
 
     detail = client.get(f"/api/v1/billing/items/{item['id']}", headers=admin_headers)
     assert detail.status_code == 200
@@ -811,7 +815,7 @@ def test_recurring_without_contract_and_one_time_flow_are_issued(
     assert installment_item["reference_type"] == "installment"
     assert installment_item["reference_position"] == 2
     assert installment_item["reference_total"] == 3
-    assert installment_item["reference_label"] == "Parcela 2/3"
+    assert installment_item["reference_label"] == "Parcela 02 de 3"
     emitted = issue(
         client, admin_headers, one_time.json()["billing_item_id"], "issue-one-time-fiscal"
     )

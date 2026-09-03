@@ -215,3 +215,25 @@ def test_fiscal_authorized_net_amount_migration_is_additive_and_idempotent() -> 
     assert "VLIQ" in normalized
     assert "DROP " not in normalized
     assert "DELETE " not in normalized
+
+
+def test_billing_commercial_semantics_migration_preserves_history() -> None:
+    delta = (ROOT / "database/migrations/029_billing_commercial_semantics.sql").read_text(
+        encoding="utf-8"
+    )
+    normalized = delta.upper()
+    for column in ("ORIGIN_TYPE", "REFERENCE_TYPE", "REFERENCE_POSITION", "REFERENCE_TOTAL"):
+        assert f"ADD COLUMN IF NOT EXISTS {column}" in normalized
+    assert "UPDATE PUBLIC.BILLING_ITEMS" not in normalized
+    assert "SOURCE_TYPE IS DISTINCT FROM OLD.SOURCE_TYPE" in normalized
+
+
+def test_onedrive_archiving_migration_has_idempotency_constraints() -> None:
+    delta = (ROOT / "database/migrations/030_onedrive_archiving.sql").read_text(
+        encoding="utf-8"
+    )
+    normalized = delta.upper()
+    assert "UNIQUE (ORGANIZATION_ID, PROVIDER)" in normalized
+    assert "UNIQUE (ISSUANCE_ID, PROVIDER)" in normalized
+    assert "ACCESS_TOKEN_CIPHERTEXT BYTEA" in normalized
+    assert "REFRESH_TOKEN_CIPHERTEXT BYTEA" in normalized

@@ -780,6 +780,10 @@ class BillingItem(Base):
     business_unit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("business_units.id"))
     created_by_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("billing_runs.id"))
     source_type: Mapped[str] = mapped_column(String(30), default="contract_recurring")
+    origin_type: Mapped[str | None] = mapped_column(String(30))
+    reference_type: Mapped[str | None] = mapped_column(String(30))
+    reference_position: Mapped[int | None] = mapped_column(Integer)
+    reference_total: Mapped[int | None] = mapped_column(Integer)
     client_service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("client_services.id"))
     service_occurrence_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("client_service_occurrences.id"), unique=True
@@ -961,3 +965,55 @@ class FiscalDocument(Base):
     status: Mapped[str] = mapped_column(String(20), default="available")
     error_code: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IntegrationConnection(TimestampMixin, Base):
+    __tablename__ = "integration_connections"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "provider"),
+        CheckConstraint("provider IN ('onedrive')"),
+        CheckConstraint("status IN ('active', 'error')"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"))
+    provider: Mapped[str] = mapped_column(String(30), default="onedrive")
+    account_id: Mapped[str | None] = mapped_column(String(255))
+    account_name: Mapped[str | None] = mapped_column(String(255))
+    access_token_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    access_token_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    refresh_token_ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    refresh_token_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    token_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    scopes: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+
+
+class IntegrationOAuthState(Base):
+    __tablename__ = "integration_oauth_states"
+
+    state_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"))
+    requested_by_actor_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("actors.id"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FiscalArchiveJob(TimestampMixin, Base):
+    __tablename__ = "fiscal_archive_jobs"
+    __table_args__ = (
+        UniqueConstraint("issuance_id", "provider"),
+        CheckConstraint("provider IN ('onedrive')"),
+        CheckConstraint("status IN ('pending', 'completed', 'failed')"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"))
+    issuance_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fiscal_issuances.id"))
+    provider: Mapped[str] = mapped_column(String(30), default="onedrive")
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    remote_path: Mapped[str | None] = mapped_column(String(1000))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

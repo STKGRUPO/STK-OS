@@ -268,7 +268,7 @@ def test_one_time_installments_create_explicit_distinct_occurrences_and_items(
         assert item["reference_type"] == "installment"
         assert item["reference_position"] == number
         assert item["reference_total"] == 3
-        assert item["reference_label"] == f"Parcela {number}/3"
+        assert item["reference_label"] == f"Parcela {number:02d} de 3"
         assert item["snapshot"]["billing_reference"] == {
             "type": "installment",
             "position": number,
