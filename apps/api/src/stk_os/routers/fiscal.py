@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import uuid
+import zipfile
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +23,7 @@ from stk_os.fiscal.configuration import FiscalConfigurationError, validate_fisca
 from stk_os.fiscal.documents import (
     AuthorizedNfseMetadata,
     extract_authorized_nfse_metadata,
+    filename_token,
     friendly_nfse_filename,
     render_danfse_from_authorized_xml,
 )
@@ -64,6 +67,7 @@ from stk_os.models import (
 )
 from stk_os.routers.billing import (
     FISCAL_FIELD_LABELS,
+    competence_date,
     ensure_unit_access,
     missing_customer_fiscal_fields,
 )
@@ -1393,6 +1397,96 @@ def sync_fiscal_sequence(
         complete_command(record, response, response_status=200)
     session.commit()
     return response
+
+
+@router.get("/fiscal/documents/archive")
+def fiscal_documents_archive(
+    business_unit_id: uuid.UUID,
+    competence_month: Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")],
+    session: SessionDep,
+    actor: Annotated[ActorContext, Depends(require_permission("fiscal:read"))],
+) -> Response:
+    ensure_unit_access(session, actor, "fiscal:read", business_unit_id)
+    competence = competence_date(competence_month)
+    rows = session.execute(
+        select(
+            FiscalIssuance.id,
+            FiscalIssuance.nfse_number,
+            Company.trade_name,
+            Company.legal_name,
+            BusinessUnit.name,
+            FiscalDocument.document_type,
+            FiscalDocument.content_bytes,
+        )
+        .join(BillingItem, BillingItem.id == FiscalIssuance.billing_item_id)
+        .join(Company, Company.id == BillingItem.customer_company_id)
+        .join(BusinessUnit, BusinessUnit.id == BillingItem.business_unit_id)
+        .outerjoin(
+            FiscalDocument,
+            (FiscalDocument.issuance_id == FiscalIssuance.id)
+            & FiscalDocument.document_type.in_(("danfse_pdf", "nfse_xml"))
+            & (FiscalDocument.status == "available"),
+        )
+        .where(
+            FiscalIssuance.organization_id == actor.organization_id,
+            FiscalIssuance.status == "completed",
+            FiscalIssuance.nfse_number.is_not(None),
+            BillingItem.organization_id == actor.organization_id,
+            BillingItem.business_unit_id == business_unit_id,
+            BillingItem.competence_month == competence,
+        )
+        .order_by(FiscalIssuance.nfse_number, FiscalDocument.document_type)
+    ).all()
+    issuances: dict[uuid.UUID, dict[str, Any]] = {}
+    unit_name = "UNIDADE"
+    for issuance_id, number, trade_name, legal_name, selected_unit, kind, content in rows:
+        unit_name = selected_unit
+        entry = issuances.setdefault(
+            issuance_id,
+            {
+                "number": number,
+                "trade_name": trade_name,
+                "legal_name": legal_name,
+                "documents": {},
+            },
+        )
+        if kind in {"danfse_pdf", "nfse_xml"} and content is not None:
+            entry["documents"][kind] = bytes(content)
+
+    if not any(entry["documents"] for entry in issuances.values()):
+        raise HTTPException(
+            status_code=404,
+            detail="Nenhum documento fiscal disponível para esta competência.",
+        )
+
+    pending: list[str] = []
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for entry in issuances.values():
+            for kind, label in (("danfse_pdf", "PDF"), ("nfse_xml", "XML")):
+                content = entry["documents"].get(kind)
+                if content is None:
+                    customer = (entry["trade_name"] or "").strip() or entry["legal_name"]
+                    pending.append(
+                        f"NFS-e {entry['number']} - {customer} - {label} não disponível"
+                    )
+                    continue
+                filename = friendly_nfse_filename(
+                    document_type=kind,
+                    nfse_number=entry["number"],
+                    trade_name=entry["trade_name"],
+                    legal_name=entry["legal_name"],
+                )
+                bundle.writestr(filename, content)
+        if pending:
+            bundle.writestr("PENDENCIAS.txt", "\n".join(pending).encode("utf-8"))
+
+    zip_name = f"NFSE_{filename_token(unit_name, fallback='UNIDADE')}_{competence_month}.zip"
+    return Response(
+        content=archive.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+    )
 
 
 @router.get("/fiscal/documents/{document_id}/content")
