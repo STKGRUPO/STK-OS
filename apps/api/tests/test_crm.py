@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+import uuid
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 from conftest import (
+    ADMIN_ACTOR_ID,
+    ESTABLISHMENT_ID,
     LAB_UNIT_ID,
     MR_LOSS_REASON_ID,
     MR_PIPELINE_ID,
     MR_PRODUCT_ID,
     MR_STAGE_LEAD_ID,
     MR_STAGE_PROPOSAL_ID,
+    ORGANIZATION_ID,
     SOURCE_ID,
     STELLI_UNIT_ID,
     UNIT_ID,
@@ -19,8 +24,17 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from stk_os.models import (
     AuditEvent,
+    BillingItem,
+    BusinessUnit,
+    ClientService,
+    Company,
+    CompanyBusinessUnit,
+    Contract,
     CrmImportRow,
+    FiscalEstablishment,
+    LegalEntity,
     OpportunityStageHistory,
+    Organization,
     OutboxEvent,
     Person,
     PersonBusinessUnit,
@@ -141,6 +155,228 @@ def test_canonical_person_and_company_are_multiunit_and_idempotent(
     with session_factory() as session:
         assert session.scalar(select(func.count()).select_from(Person)) == 1
         assert session.scalar(select(func.count()).select_from(PersonBusinessUnit)) == 3
+
+
+def test_update_company_synchronizes_units_without_replacing_canonical_company(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    session_factory: sessionmaker[Session],
+) -> None:
+    created = client.post(
+        "/api/v1/crm/companies",
+        headers=command_headers(admin_headers, "create-company-unit-sync"),
+        json={
+            "legal_name": "TINTAS MAIS CORES LTDA",
+            "trade_name": "TINTAS MAIS CORES",
+            "tax_id": "50.098.924/0001-40",
+            "address_line": "Rua das Cores",
+            "business_unit_ids": [str(UNIT_ID)],
+            "contacts": [{"kind": "email", "value": "financeiro@tintas.example.test"}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    company = created.json()
+    company_id = uuid.UUID(company["id"])
+
+    contract_id = uuid.uuid4()
+    service_id = uuid.uuid4()
+    billing_item_id = uuid.uuid4()
+    with session_factory() as session, session.begin():
+        session.add(
+            Contract(
+                id=contract_id,
+                organization_id=ORGANIZATION_ID,
+                business_unit_id=UNIT_ID,
+                customer_company_id=company_id,
+                internal_number="TINTAS-001",
+                administrative_status="draft",
+                start_date=date(2026, 1, 1),
+                contract_type="recurring",
+                owner_actor_id=ADMIN_ACTOR_ID,
+                created_by_actor_id=ADMIN_ACTOR_ID,
+            )
+        )
+        session.add(
+            ClientService(
+                id=service_id,
+                organization_id=ORGANIZATION_ID,
+                business_unit_id=UNIT_ID,
+                customer_company_id=company_id,
+                contract_id=contract_id,
+                name="Serviço preservado",
+                service_type="recurring",
+                recurrence="monthly",
+                interval_months=1,
+                start_date=date(2026, 1, 1),
+                next_occurrence_on=date(2026, 9, 1),
+                owner_actor_id=ADMIN_ACTOR_ID,
+                amount=Decimal("100.00"),
+                currency="BRL",
+                operational_lead_days=0,
+                reminder_lead_days=0,
+                status="active",
+                created_by_actor_id=ADMIN_ACTOR_ID,
+            )
+        )
+        session.add(
+            BillingItem(
+                id=billing_item_id,
+                organization_id=ORGANIZATION_ID,
+                business_unit_id=UNIT_ID,
+                source_type="contract_recurring",
+                origin_type="contract",
+                reference_type="month",
+                reference_position=1,
+                reference_total=12,
+                client_service_id=service_id,
+                contract_id=contract_id,
+                competence_month=date(2026, 9, 1),
+                customer_company_id=company_id,
+                issuer_establishment_id=ESTABLISHMENT_ID,
+                currency="BRL",
+                gross_amount=Decimal("100.00"),
+                snapshot={},
+                snapshot_sha256="0" * 64,
+                status="ready",
+                correlation_id=uuid.uuid4(),
+                created_by_actor_id=ADMIN_ACTOR_ID,
+            )
+        )
+
+    added = client.patch(
+        f"/api/v1/crm/companies/{company['id']}",
+        headers=command_headers(admin_headers, "company-unit-sync-add"),
+        json={"business_unit_ids": [str(UNIT_ID), str(LAB_UNIT_ID)]},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["id"] == company["id"]
+    assert added.json()["tax_id"] == "50098924000140"
+    assert set(added.json()["business_unit_ids"]) == {str(UNIT_ID), str(LAB_UNIT_ID)}
+    assert added.json()["address_line"] == "Rua das Cores"
+    assert added.json()["contacts"][0]["value"] == "financeiro@tintas.example.test"
+
+    for unit_id in (UNIT_ID, LAB_UNIT_ID):
+        listed = client.get(
+            "/api/v1/crm/companies",
+            headers=admin_headers,
+            params={"business_unit_id": str(unit_id)},
+        )
+        assert company["id"] in {item["id"] for item in listed.json()}
+
+    repeated = client.patch(
+        f"/api/v1/crm/companies/{company['id']}",
+        headers=command_headers(admin_headers, "company-unit-sync-repeat"),
+        json={"business_unit_ids": [str(UNIT_ID), str(LAB_UNIT_ID)]},
+    )
+    assert repeated.status_code == 200, repeated.text
+    with session_factory() as session:
+        assert session.scalar(
+            select(func.count()).select_from(CompanyBusinessUnit).where(
+                CompanyBusinessUnit.company_id == company_id
+            )
+        ) == 2
+
+    removed = client.patch(
+        f"/api/v1/crm/companies/{company['id']}",
+        headers=command_headers(admin_headers, "company-unit-sync-remove"),
+        json={"business_unit_ids": [str(LAB_UNIT_ID)]},
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["business_unit_ids"] == [str(LAB_UNIT_ID)]
+
+    unchanged = client.patch(
+        f"/api/v1/crm/companies/{company['id']}",
+        headers=command_headers(admin_headers, "company-unit-sync-no-units"),
+        json={"trade_name": "TINTAS MAIS CORES ATUALIZADA"},
+    )
+    assert unchanged.status_code == 200, unchanged.text
+    assert unchanged.json()["business_unit_ids"] == [str(LAB_UNIT_ID)]
+
+    listed_a = client.get(
+        "/api/v1/crm/companies",
+        headers=admin_headers,
+        params={"business_unit_id": str(UNIT_ID)},
+    )
+    listed_b = client.get(
+        "/api/v1/crm/companies",
+        headers=admin_headers,
+        params={"business_unit_id": str(LAB_UNIT_ID)},
+    )
+    assert company["id"] not in {item["id"] for item in listed_a.json()}
+    assert company["id"] in {item["id"] for item in listed_b.json()}
+
+    with session_factory() as session:
+        links = {
+            row.business_unit_id: row.status
+            for row in session.scalars(
+                select(CompanyBusinessUnit).where(CompanyBusinessUnit.company_id == company_id)
+            ).all()
+        }
+        assert links == {UNIT_ID: "inactive", LAB_UNIT_ID: "active"}
+        assert session.get(Company, company_id).tax_id == "50098924000140"
+        assert session.get(Contract, contract_id).customer_company_id == company_id
+        assert session.get(ClientService, service_id).customer_company_id == company_id
+        assert session.get(BillingItem, billing_item_id).customer_company_id == company_id
+        assert session.scalar(
+            select(func.count()).select_from(Company).where(
+                Company.organization_id == ORGANIZATION_ID,
+                Company.tax_id == "50098924000140",
+            )
+        ) == 1
+
+
+def test_update_company_rejects_business_unit_from_another_organization(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    session_factory: sessionmaker[Session],
+) -> None:
+    company = create_company(client, admin_headers)
+    other_organization_id = uuid.uuid4()
+    other_entity_id = uuid.uuid4()
+    other_establishment_id = uuid.uuid4()
+    other_unit_id = uuid.uuid4()
+    with session_factory() as session, session.begin():
+        session.add(
+            Organization(
+                id=other_organization_id,
+                code="outra-organizacao",
+                name="Outra organização",
+            )
+        )
+        session.add(
+            LegalEntity(
+                id=other_entity_id,
+                organization_id=other_organization_id,
+                code="outra-entidade",
+                registered_name="Outra entidade",
+            )
+        )
+        session.add(
+            FiscalEstablishment(
+                id=other_establishment_id,
+                legal_entity_id=other_entity_id,
+                code="outra-matriz",
+                name="Outra matriz",
+                kind="headquarters",
+            )
+        )
+        session.add(
+            BusinessUnit(
+                id=other_unit_id,
+                organization_id=other_organization_id,
+                primary_establishment_id=other_establishment_id,
+                code="outra-unidade",
+                name="Outra unidade",
+            )
+        )
+
+    response = client.patch(
+        f"/api/v1/crm/companies/{company['id']}",
+        headers=command_headers(admin_headers, "company-unit-sync-cross-org"),
+        json={"business_unit_ids": [str(other_unit_id)]},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unidade de negócio inválida"
 
 
 def test_opportunity_kanban_stage_history_next_action_and_360(

@@ -417,6 +417,41 @@ def link_company_units(
             )
 
 
+def sync_company_units(
+    session: Session,
+    *,
+    actor: ActorContext,
+    company_id: uuid.UUID,
+    unit_ids: list[uuid.UUID],
+) -> None:
+    ensure_units(session, actor.organization_id, unit_ids)
+    requested = set(dict.fromkeys(unit_ids))
+    rows = list(
+        session.scalars(
+            select(CompanyBusinessUnit).where(
+                CompanyBusinessUnit.company_id == company_id
+            )
+        ).all()
+    )
+    existing = {row.business_unit_id: row for row in rows}
+    for unit_id in requested:
+        row = existing.get(unit_id)
+        if row is None:
+            session.add(
+                CompanyBusinessUnit(
+                    organization_id=actor.organization_id,
+                    company_id=company_id,
+                    business_unit_id=unit_id,
+                    owner_actor_id=actor.id,
+                )
+            )
+        else:
+            row.status = "active"
+    for row in rows:
+        if row.business_unit_id not in requested:
+            row.status = "inactive"
+
+
 @router.get("/reference-data", response_model=ReferenceDataResponse)
 def reference_data(
     session: SessionDep,
@@ -773,7 +808,9 @@ def update_company(
         return CompanySummary.model_validate(replay)
     company = get_owned(session, Company, company_id, actor.organization_id)
     before = {"legal_name": company.legal_name, "status": company.status}
-    for field, value in command.model_dump(exclude_unset=True).items():
+    updates = command.model_dump(exclude_unset=True)
+    business_unit_ids = updates.pop("business_unit_ids", None)
+    for field, value in updates.items():
         if field == "state_code":
             value = normalize_state(value)
         if field == "tax_id":
@@ -781,6 +818,13 @@ def update_company(
         if field == "legal_name" and value:
             value = value.strip()
         setattr(company, field, value)
+    if business_unit_ids is not None:
+        sync_company_units(
+            session,
+            actor=actor,
+            company_id=company.id,
+            unit_ids=business_unit_ids,
+        )
     company.updated_at = datetime.now(UTC)
     session.flush()
     response = company_summary(session, company)

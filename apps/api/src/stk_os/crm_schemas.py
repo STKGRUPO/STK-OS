@@ -93,6 +93,9 @@ class CompanyUpdate(BaseModel):
     site: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None, max_length=4000)
     status: Literal["active", "inactive"] | None = None
+    business_unit_ids: list[uuid.UUID] | None = Field(
+        default=None, min_length=1, max_length=3
+    )
 
 
 class CompanySummary(BaseModel):
